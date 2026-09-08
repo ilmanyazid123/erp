@@ -36,7 +36,6 @@ yarn-error.log*
 # vercel
 .vercel
 
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
@@ -46,9 +45,16 @@ local-*
 *.log
 dev.log
 dev.out.log
-test
-prompt
-
 server.log
+
 # Skills directory
 /skills/
+
+# Dev artifacts (not needed in published repo)
+.zscripts/dev.pid
+db/custom.db
+db/*.db
+db/*.db-journal
+verify-screenshots/
+faizerp_analysis.md
+tool-results/
