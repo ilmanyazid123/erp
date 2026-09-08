@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, LogIn, UserPlus, Loader2 } from "lucide-react";
-import { useLang, useAuthModal } from "@/components/providers";
-import { FaizLogo } from "@/components/faiz-logo";
+import { X, LogIn, UserPlus, Loader2, AlertCircle } from "lucide-react";
+import { useLang, useAuthModal, signIn } from "@/components/providers";
 
 export function AuthDialog() {
   const { modal, close, open } = useAuthModal();
   const { t, lang, toggleLang } = useLang();
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset error when switching between login/register mode
+  useEffect(() => {
+    setError(null);
+  }, [modal]);
 
   // Lock scroll while modal is open.
   useEffect(() => {
@@ -33,6 +38,75 @@ export function AuthDialog() {
   if (!modal) return null;
   const isRegister = modal === "register";
 
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      const formData = new FormData(e.currentTarget);
+      if (isRegister) {
+        // Call /api/auth/register
+        const body = {
+          businessName: String(formData.get("businessName") ?? ""),
+          name: String(formData.get("name") ?? ""),
+          email: String(formData.get("email") ?? ""),
+          password: String(formData.get("password") ?? ""),
+          confirmPassword: String(formData.get("confirmPassword") ?? ""),
+        };
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Registrasi gagal.");
+        }
+        // Auto-login after successful registration
+        const signInRes = await signIn("credentials", {
+          email: body.email,
+          password: body.password,
+          redirect: false,
+        });
+        if (signInRes?.error) {
+          // Account created but login failed — show a friendly message.
+          setError(
+            lang === "id"
+              ? "Akun berhasil dibuat, tapi login otomatis gagal. Silakan login manual."
+              : "Account created, but auto-login failed. Please sign in manually.",
+          );
+          open("login");
+          return;
+        }
+        // Success — refresh page so server components pick up the new session
+        window.location.reload();
+      } else {
+        // Login via next-auth credentials provider
+        const email = String(formData.get("email") ?? "");
+        const password = String(formData.get("password") ?? "");
+        const signInRes = await signIn("credentials", {
+          email,
+          password,
+          redirect: false,
+        });
+        if (signInRes?.error) {
+          setError(
+            lang === "id"
+              ? "Email atau password salah."
+              : "Invalid email or password.",
+          );
+          return;
+        }
+        window.location.reload();
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Terjadi kesalahan. Coba lagi.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
@@ -55,41 +129,56 @@ export function AuthDialog() {
         </button>
 
         <div className="flex flex-col items-center text-center">
-          <FaizLogo className="h-10 w-10" />
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white font-bold">
+            F
+          </span>
           <h2 className="mt-3 text-2xl font-semibold">
             {isRegister ? t.auth.registerTitle : t.auth.loginTitle}
           </h2>
         </div>
 
-        <form
-          className="mt-6 flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setSubmitting(true);
-            // Demo only — no real backend.
-            setTimeout(() => {
-              setSubmitting(false);
-              close();
-            }, 900);
-          }}
-        >
+        {error ? (
+          <div
+            role="alert"
+            className="mt-4 flex items-start gap-2 rounded-md border border-[color:var(--coral)]/30 bg-[color:var(--coral)]/5 px-3 py-2 text-sm text-[color:var(--coral)]"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        ) : null}
+
+        <form className="mt-6 flex flex-col gap-3" onSubmit={handleSubmit}>
           {isRegister ? (
             <>
-              <Field label={t.auth.registerBusinessName} type="text" required />
-              <Field label={t.auth.registerYourName} type="text" required />
+              <Field
+                name="businessName"
+                label={t.auth.registerBusinessName}
+                type="text"
+                required
+              />
+              <Field
+                name="name"
+                label={t.auth.registerYourName}
+                type="text"
+                required
+              />
             </>
           ) : null}
-          <Field label={t.auth.loginEmail} type="email" required />
+          <Field name="email" label={t.auth.loginEmail} type="email" required />
           <Field
+            name="password"
             label={isRegister ? t.auth.registerPassword : t.auth.loginPassword}
             type="password"
             required
+            minLength={6}
           />
           {isRegister ? (
             <Field
+              name="confirmPassword"
               label={t.auth.registerConfirm}
               type="password"
               required
+              minLength={6}
             />
           ) : null}
 
@@ -174,20 +263,27 @@ export function AuthDialog() {
 }
 
 function Field({
+  name,
   label,
   type,
   required,
+  minLength,
 }: {
+  name: string;
   label: string;
   type: string;
   required?: boolean;
+  minLength?: number;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-medium text-foreground/80">{label}</span>
       <input
+        name={name}
         type={type}
         required={required}
+        minLength={minLength}
+        autoComplete={type === "password" ? "current-password" : undefined}
         className="h-10 w-full rounded-lg border border-foreground/15 bg-background px-3 text-sm shadow-sm transition-colors placeholder:text-foreground/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/40"
       />
     </label>

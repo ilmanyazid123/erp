@@ -3,6 +3,8 @@
 // CSS-based mockups of the FaizERP UI, used in the hero and screenshots
 // sections of the homepage. Pure HTML/CSS — no images required.
 
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -22,7 +24,91 @@ import {
   TrendingUp,
   Users,
   Wallet,
+  type LucideIcon,
 } from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/* Real data hook — fetches dashboard stats when authenticated.        */
+/* ------------------------------------------------------------------ */
+type RealStats = {
+  stats: Array<{
+    label: string;
+    value: string;
+    delta: string;
+    up: boolean;
+    tone: "primary" | "teal" | "coral";
+    icon: string;
+  }>;
+  salesSeries: Array<{ date: string; value: number }>;
+  lowStock: Array<{ name: string; quantity: number }>;
+};
+
+const TONE_BY_NAME: Record<string, "primary" | "teal" | "coral"> = {
+  primary: "primary",
+  teal: "teal",
+  coral: "coral",
+};
+const ICON_BY_NAME: Record<string, LucideIcon> = {
+  "trending-up": TrendingUp,
+  wallet: Wallet,
+  receipt: Receipt,
+  package: Package,
+};
+
+function useDashboardStats() {
+  const { status } = useSession();
+  const [data, setData] = useState<RealStats | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (status !== "authenticated") return;
+    fetch("/api/dashboard/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (active && d && Array.isArray(d.stats)) setData(d);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [status]);
+
+  return data;
+}
+
+function useActivities() {
+  const { status } = useSession();
+  const [data, setData] = useState<
+    | Array<{ label: string; timeAgo: string; tone: "primary" | "teal" | "coral" }>
+    | null
+  >(null);
+
+  useEffect(() => {
+    let active = true;
+    if (status !== "authenticated") return;
+    fetch("/api/activities")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (active && d && Array.isArray(d.activities) && d.activities.length > 0) {
+          setData(
+            d.activities.slice(0, 5).map(
+              (a: { label: string; timeAgo: string; tone: "primary" | "teal" | "coral" }) => ({
+                label: a.label,
+                timeAgo: a.timeAgo,
+                tone: a.tone,
+              }),
+            ),
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [status]);
+
+  return data;
+}
 
 /* ------------------------------------------------------------------ */
 /* Window chrome shared by all mockups                                 */
@@ -87,24 +173,42 @@ function Sidebar() {
 /* Dashboard mockup                                                    */
 /* ------------------------------------------------------------------ */
 export function DashboardMock({ compact = false }: { compact?: boolean }) {
-  const stats = [
-    { label: "Sales", value: "Rp 42.3M", delta: "+12.4%", up: true, icon: TrendingUp, tone: "primary" as const },
-    { label: "Cash", value: "Rp 18.7M", delta: "+3.1%", up: true, icon: Wallet, tone: "teal" as const },
-    { label: "Approval", value: "5 request", delta: "−2", up: false, icon: Receipt, tone: "coral" as const },
-    { label: "Low Stock", value: "12 items", delta: "+3", up: false, icon: Package, tone: "primary" as const },
-  ];
+  const realStats = useDashboardStats();
+  const realActivities = useActivities();
+
+  const stats = realStats
+    ? realStats.stats.map((s) => ({
+        label: s.label,
+        value: s.value,
+        delta: s.delta,
+        up: s.up,
+        icon: ICON_BY_NAME[s.icon] ?? TrendingUp,
+        tone: TONE_BY_NAME[s.tone] ?? "primary",
+      }))
+    : [
+        { label: "Sales", value: "Rp 42.3M", delta: "+12.4%", up: true, icon: TrendingUp, tone: "primary" as const },
+        { label: "Cash", value: "Rp 18.7M", delta: "+3.1%", up: true, icon: Wallet, tone: "teal" as const },
+        { label: "Approval", value: "5 request", delta: "−2", up: false, icon: Receipt, tone: "coral" as const },
+        { label: "Low Stock", value: "12 items", delta: "+3", up: false, icon: Package, tone: "primary" as const },
+      ];
   const toneClasses = {
     primary: "bg-primary/10 text-primary",
     teal: "bg-[color:var(--teal)]/10 text-[color:var(--teal)]",
     coral: "bg-[color:var(--coral)]/10 text-[color:var(--coral)]",
   };
-  const activities = [
-    { label: "PO-2031 approved by Rina", time: "5m", tone: "primary" as const },
-    { label: "Sales INV-1187 paid by Andi", time: "12m", tone: "teal" as const },
-    { label: "Stock adjustment on Gudang A", time: "32m", tone: "coral" as const },
-    { label: "Team chat: Restock request", time: "1h", tone: "primary" as const },
-    { label: "Cash out: Expense operasional", time: "2h", tone: "teal" as const },
-  ];
+  const activities = realActivities
+    ? realActivities.map((a) => ({
+        label: a.label,
+        time: a.timeAgo, // already formatted like "5m", "1h"
+        tone: a.tone,
+      }))
+    : [
+        { label: "PO-2031 approved by Rina", time: "5m", tone: "primary" as const },
+        { label: "Sales INV-1187 paid by Andi", time: "12m", tone: "teal" as const },
+        { label: "Stock adjustment on Gudang A", time: "32m", tone: "coral" as const },
+        { label: "Team chat: Restock request", time: "1h", tone: "primary" as const },
+        { label: "Cash out: Expense operasional", time: "2h", tone: "teal" as const },
+      ];
 
   return (
     <div className="mock-window flex flex-col w-full">
@@ -179,23 +283,26 @@ export function DashboardMock({ compact = false }: { compact?: boolean }) {
                   <span className="text-sm font-medium">Aktivitas</span>
                 </div>
                 <ul className="mt-2 space-y-2">
-                  {activities.map((a, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs">
-                      <span
-                        className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                          a.tone === "primary"
-                            ? "bg-primary"
-                            : a.tone === "teal"
-                              ? "bg-[color:var(--teal)]"
-                              : "bg-[color:var(--coral)]"
-                        }`}
-                      />
-                      <div className="flex-1">
-                        <div className="text-foreground/80">{a.label}</div>
-                        <div className="text-foreground/40">{a.time} ago</div>
-                      </div>
-                    </li>
-                  ))}
+                  {activities.map((a, i) => {
+                    const timeLabel = realActivities ? a.time : `${a.time} ago`;
+                    return (
+                      <li key={i} className="flex items-start gap-2 text-xs">
+                        <span
+                          className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                            a.tone === "primary"
+                              ? "bg-primary"
+                              : a.tone === "teal"
+                                ? "bg-[color:var(--teal)]"
+                                : "bg-[color:var(--coral)]"
+                          }`}
+                        />
+                        <div className="flex-1">
+                          <div className="text-foreground/80">{a.label}</div>
+                          <div className="text-foreground/40">{timeLabel}</div>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             </div>

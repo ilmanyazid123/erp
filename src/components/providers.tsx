@@ -8,6 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { SessionProvider, signIn, signOut } from "next-auth/react";
 import { strings, type Dict, type Lang } from "@/lib/i18n";
 
 /* ------------------------------------------------------------------ */
@@ -107,8 +108,16 @@ export function useAuthModal() {
 /* ------------------------------------------------------------------ */
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
-    <LanguageProvider>
-      <AuthModalProvider>{children}</AuthModalProvider>
-    </LanguageProvider>
+    <SessionProvider>
+      <LanguageProvider>
+        <AuthModalProvider>{children}</AuthModalProvider>
+      </LanguageProvider>
+    </SessionProvider>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Re-export next-auth helpers so we can swap implementations later      */
+/* without touching every callsite.                                    */
+/* ------------------------------------------------------------------ */
+export { signIn, signOut };

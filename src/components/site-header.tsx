@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LogIn, Menu, X } from "lucide-react";
-import { useLang, useAuthModal } from "@/components/providers";
+import { LogIn, LogOut, Menu, X, User } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useLang, useAuthModal, signOut } from "@/components/providers";
 import { FaizWordmark } from "@/components/faiz-logo";
 
 export function SiteHeader() {
   const { t, lang, toggleLang } = useLang();
   const { open } = useAuthModal();
+  const { data: session, status } = useSession();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -24,6 +26,10 @@ export function SiteHeader() {
     { label: t.nav.pricing, href: "#pricing" },
     { label: t.nav.faq, href: "#faq" },
   ];
+
+  const isAuthed = status === "authenticated" && !!session?.user;
+  // @ts-expect-error - augmented field on session.user
+  const businessName: string | undefined = session?.user?.businessName;
 
   return (
     <header
@@ -63,14 +69,33 @@ export function SiteHeader() {
             {t.nav.languageLabel}
           </button>
 
-          <button
-            type="button"
-            onClick={() => open("login")}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-primary"
-          >
-            <LogIn className="h-4 w-4" />
-            {t.nav.login}
-          </button>
+          {isAuthed ? (
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white/90 backdrop-blur">
+                <User className="h-4 w-4" />
+                <span className="max-w-[160px] truncate">
+                  {businessName ?? session?.user?.name ?? session?.user?.email}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-primary"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => open("login")}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-primary"
+            >
+              <LogIn className="h-4 w-4" />
+              {t.nav.login}
+            </button>
+          )}
 
           {/* Mobile menu toggle */}
           <button
