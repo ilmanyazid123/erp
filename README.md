@@ -37,7 +37,7 @@ Dibangun dengan Next.js 16, TypeScript, Tailwind CSS 4, NextAuth.js, Prisma (SQL
 | Language | TypeScript 5 |
 | Styling | Tailwind CSS 4 + CSS variables (OKLCH) |
 | Auth | NextAuth.js v4 (Credentials + JWT) |
-| Database | Prisma + SQLite (file-based, mudah upgrade ke PostgreSQL) |
+| Database | Prisma + PostgreSQL (Neon / Vercel Postgres / Supabase) |
 | Password hashing | bcryptjs |
 | Theme | next-themes |
 | Icons | lucide-react |
@@ -52,9 +52,10 @@ bun install
 
 # 2. Setup environment
 cp .env.example .env
-# Edit .env, ganti NEXTAUTH_SECRET dengan output dari: openssl rand -base64 32
+# Edit .env — isi DATABASE_URL (pooler) + DIRECT_URL (direct) dari Neon/Vercel Postgres/Supabase
+# Generate NEXTAUTH_SECRET: openssl rand -base64 32
 
-# 3. Buat database schema
+# 3. Buat database schema (17 tabel)
 bun run db:push
 
 # 4. Seed demo data (opsional, tapi recommended)
@@ -64,6 +65,23 @@ bun run scripts/seed.ts
 bun run dev
 # Buka http://localhost:3000
 ```
+
+## Database Setup (PostgreSQL)
+
+Schema Prisma menggunakan PostgreSQL dengan dua connection string:
+
+| Env Var | Kegunaan | Format URL |
+|--------|----------|------------|
+| `DATABASE_URL` | App runtime (via PgBouncer pooler untuk serverless) | `postgresql://...?pgbouncer=true&connect_timeout=15` |
+| `DIRECT_URL` | Migration (db:push / db:migrate — butuh direct connection) | `postgresql://...` (tanpa `pgbouncer`) |
+
+### Provider yang Didukung
+
+- **Neon** (recommended): https://neon.tech — free tier unlimited projects, autoscale, branching
+- **Vercel Postgres**: built-in di Vercel dashboard → tab Storage
+- **Supabase**: https://supabase.com — free 500MB + auth + storage + realtime
+
+Untuk Neon, hostname pooler = `ep-xxx-pooler.region.aws.neon.tech`, hostname direct = `ep-xxx.region.aws.neon.tech` (tanpa `-pooler`).
 
 ## Demo Account
 
@@ -136,9 +154,12 @@ Setelah seed:
 ### Vercel (recommended)
 1. Push repo ke GitHub
 2. Import di Vercel — auto-detect Next.js
-3. Tambahkan env vars: `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
-4. ⚠️ **SQLite tidak cocok untuk Vercel** — switch ke PostgreSQL: ubah `provider` di `prisma/schema.prisma` jadi `"postgresql"` + update `DATABASE_URL`
-5. Deploy
+3. Tambahkan env vars di Vercel dashboard → Settings → Environment Variables:
+   - `DATABASE_URL` — Neon pooler connection string (with `?pgbouncer=true`)
+   - `DIRECT_URL` — Neon direct connection string (without `pgbouncer`)
+   - `NEXTAUTH_SECRET` — generate baru dengan `openssl rand -base64 32`
+   - `NEXTAUTH_URL` — `https://<your-domain>.vercel.app`
+4. Deploy → Vercel auto-deploy setiap push ke main branch
 
 ### VPS + PM2
 ```bash
@@ -171,8 +192,9 @@ CMD ["node", "server.js"]
 
 - Email footer (`support@faizerp.id`) dan URL OpenGraph masih mengarah ke faizerp.id — ganti ke domain Anda sendiri di `src/lib/i18n.ts` dan `src/app/layout.tsx`.
 - Form login & register **sudah berfungsi penuh** dengan backend NextAuth + Prisma + bcrypt.
-- Untuk produksi: ganti SQLite ke PostgreSQL/MySQL (schema sudah portable), tambahkan rate limiting di `/api/auth/*`, dan setup SMTP untuk reset password.
-- Token NextAuth di `.env` harus diganti dengan `openssl rand -base64 32`.
+- Database: **PostgreSQL via Neon** (atau Vercel Postgres / Supabase). SQLite sebelumnya sudah diganti untuk mendukung deployment serverless.
+- Untuk produksi: tambahkan rate limiting di `/api/auth/*`, setup SMTP untuk reset password, dan pertimbangkan indexes untuk query performance pada dataset besar.
+- Token NextAuth di `.env` harus diganti dengan `openssl rand -base64 32`. Jangan commit `.env` ke git (sudah di-gitignore).
 
 ## Lisensi
 

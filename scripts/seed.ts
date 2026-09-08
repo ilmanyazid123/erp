@@ -1,12 +1,12 @@
 // Seed the database with demo data so the dashboard shows something when
-// a user signs up fresh. Run with: bun run /home/z/my-project/scripts/seed.ts
+// a user signs up fresh. Run with: bun run scripts/seed.ts
 //
-// This script is idempotent — running it again will not duplicate data.
+// Uses the same DATABASE_URL + DIRECT_URL as the app — loaded from .env
+// via `dotenv/config`. Idempotent: re-running will not duplicate data.
 
-import { PrismaClient } from "@prisma/client";
+import "dotenv/config";
+import { db } from "../src/lib/db";
 import bcrypt from "bcryptjs";
-
-const db = new PrismaClient();
 
 async function main() {
   console.log("🌱 Seeding demo data...");

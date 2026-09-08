@@ -1,4 +1,4 @@
-// FaizERP — Prisma schema for SQLite
+// FaizERP — Prisma schema for PostgreSQL (Neon / Vercel Postgres / Supabase)
 // Models: User, Business (workspace), Branch, Warehouse, Product, Customer,
 // Supplier, InventoryItem, StockMovement, PurchaseOrder (+items), SalesOrder
 // (+items), Invoice, Payment, Approval, ChatMessage, Subscription, AuditLog.
@@ -8,8 +8,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")        // Pooled connection (PgBouncer) for app runtime / serverless functions
+  directUrl  = env("DIRECT_URL")          // Direct connection for migrations (db:push / db:migrate)
 }
 
 /* ------------------------------------------------------------------ */
