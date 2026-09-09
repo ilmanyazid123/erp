@@ -1,13 +1,18 @@
 "use client";
 
-// Reusable camera barcode/QR scanner modal — dual engine.
-// 1) Native BarcodeDetector API (Android/Chrome/Edge — same on-device engine
-//    family as Google Lens): fast, reliable, no wasm.
-// 2) ZXing (@zxing/browser) fallback for Firefox / iOS Safari / older browsers.
-// Supports EAN-13/EAN-8/UPC/Code128/Code39/QR and more, decoded fully on-device.
-// Continuous mode: every detected code fires onDetected(code) after a short
-// cooldown, so users can scan several products in a row. Includes manual entry
-// fallback, retry, camera switching (front/back) and torch (flashlight) support.
+// Reusable camera barcode/QR scanner modal — parallel dual engine.
+// The camera stream is opened once, then BOTH engines listen to it:
+//   1) Native BarcodeDetector API (Android/Chrome/Edge — the on-device engine
+//      family behind Google Lens): fast, high-quality, no wasm.
+//   2) ZXing (@zxing/browser) decoding the same <video> continuously — a
+//      second opinion that rescues devices where BarcodeDetector exists but
+//      silently returns nothing (broken ML backend / WebView builds), and the
+//      ONLY engine on iOS Safari & Firefox.
+// Whichever engine reads first wins; a shared cooldown prevents duplicates.
+// Supports EAN-13/EAN-8/UPC/Code128/Code39/QR and more, decoded fully
+// on-device. Continuous mode: every detected code fires onDetected(code),
+// so users can scan several products in a row. Includes manual entry
+// fallback, retry, camera switching (front/back) and torch support.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -28,9 +33,30 @@ type DetectedBarcode = { rawValue: string };
 type BarcodeDetectorLike = {
   detect: (src: HTMLVideoElement) => Promise<DetectedBarcode[]>;
 };
-type BarcodeDetectorCtor = new () => BarcodeDetectorLike;
+type BarcodeDetectorOptions = { formats?: string[] };
+type BarcodeDetectorCtor = new (
+  opts?: BarcodeDetectorOptions,
+) => BarcodeDetectorLike;
 
 const UNSUPPORTED = "UNSUPPORTED_BROWSER";
+
+// Formats commonly needed in retail (UMKM) workflows. If a platform rejects
+// the list we retry with the no-arg constructor (all supported formats).
+const NATIVE_FORMATS = [
+  "ean_13",
+  "ean_8",
+  "upc_a",
+  "upc_e",
+  "code_128",
+  "code_39",
+  "code_93",
+  "codabar",
+  "itf",
+  "qr_code",
+  "data_matrix",
+  "pdf417",
+  "aztec",
+];
 
 function friendlyCameraError(err: unknown): string {
   const e = err as { name?: string; message?: string };
@@ -61,7 +87,8 @@ function friendlyCameraError(err: unknown): string {
   return "Kamera gagal dinyalakan. Tekan Coba lagi, atau gunakan input manual di bawah.";
 }
 
-// Errors where retrying via ZXing is pointless (same getUserMedia will fail).
+// Errors where retrying with a different engine is pointless (the same
+// getUserMedia will fail again and another prompt would just confuse).
 function isHardCameraError(err: unknown): boolean {
   const name = (err as { name?: string })?.name ?? "";
   return [
@@ -79,7 +106,7 @@ export function BarcodeScanner({
   onClose,
   onDetected,
   title = "Scan Barcode / QR",
-  hint = "Arahkan barcode produk ke dalam kotak. Saat browser bertanya, pilih Izinkan kamera. Scan berkelanjutan — produk langsung ditambahkan.",
+  hint = "Arahkan barcode produk ke dalam kotak. Setiap scan menambah 1 — angkat produk sejenak lalu arahkan lagi untuk menambah qty.",
   status,
   manualPlaceholder = "Ketik kode barcode manual...",
 }: {
@@ -94,7 +121,10 @@ export function BarcodeScanner({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const stopRef = useRef<StopFn | null>(null);
   const runIdRef = useRef(0);
-  const lastRef = useRef<{ code: string; ts: number }>({ code: "", ts: 0 });
+  // Presence-aware dedupe: a code must LEAVE the camera view for GONE_MS
+  // before it can be accepted again — otherwise a barcode resting in front
+  // of the camera would keep incrementing the quantity forever.
+  const seenRef = useRef<{ code: string; ts: number }>({ code: "", ts: 0 });
   const onDetectedRef = useRef(onDetected);
 
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -135,10 +165,13 @@ export function BarcodeScanner({
   const handleDetected = useCallback(
     (code: string) => {
       const now = Date.now();
-      // Cooldown: ignore the same code twice within 1.5s (sticky scan).
-      if (code === lastRef.current.code && now - lastRef.current.ts < 1500)
+      // Same code still (or just) in view → part of the same scan event.
+      if (code === seenRef.current.code && now - seenRef.current.ts < 1000) {
+        seenRef.current.ts = now;
         return;
-      lastRef.current = { code, ts: now };
+      }
+      // New code, or the previous one left the view — accept it.
+      seenRef.current = { code, ts: now };
       beep();
       onDetectedRef.current(code);
     },
@@ -160,9 +193,7 @@ export function BarcodeScanner({
   const refreshMultiCam = useCallback(async () => {
     try {
       const devs = await navigator.mediaDevices.enumerateDevices();
-      setHasMultiCam(
-        devs.filter((d) => d.kind === "videoinput").length > 1,
-      );
+      setHasMultiCam(devs.filter((d) => d.kind === "videoinput").length > 1);
     } catch {
       /* ignore */
     }
@@ -172,41 +203,129 @@ export function BarcodeScanner({
     stopCamera();
     const runId = runIdRef.current;
     const isStale = () => runId !== runIdRef.current;
-    const killStream = (s: MediaStream | null | undefined) =>
-      s?.getTracks().forEach((t) => t.stop());
 
     setCameraError(null);
     setStarting(true);
 
-    // ---- Engine 2: ZXing fallback (Firefox / iOS Safari / others) ----
-    const startZxing = async () => {
-      if (isStale()) return;
-      setStarting(true);
-      try {
-        const { BrowserMultiFormatReader } = await import("@zxing/browser");
-        const reader = new BrowserMultiFormatReader();
-        const video = videoRef.current;
-        if (!video) return;
+    let stream: MediaStream | null = null;
+    // Composite stop for every engine started during this run.
+    const engineStops: StopFn[] = [];
+    const stopAll = () => {
+      for (const stop of engineStops) {
+        try {
+          stop();
+        } catch {
+          /* ignore */
+        }
+      }
+      engineStops.length = 0;
+      stream?.getTracks().forEach((t) => t.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
+      setHasTorch(false);
+      setTorchOn(false);
+    };
 
-        const onResult = (result: { getText: () => string } | null) => {
-          if (result) handleDetected(result.getText().trim());
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error(UNSUPPORTED);
+
+      // ---- Open the camera once, shared by both engines ----
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: facing,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+      if (isStale()) {
+        stopAll();
+        return;
+      }
+      const video = videoRef.current;
+      if (!video) {
+        stopAll();
+        return;
+      }
+      video.srcObject = stream;
+      try {
+        await video.play();
+      } catch {
+        /* autoplay policies — muted+playsInline usually allowed */
+      }
+
+      const track = stream.getVideoTracks()[0];
+      const caps = (
+        track as MediaStreamTrack & {
+          getCapabilities?: () => { torch?: boolean };
+        }
+      ).getCapabilities?.();
+      if (caps?.torch) setHasTorch(true);
+
+      let anyEngine = false;
+
+      // ---- Engine A: native BarcodeDetector (Android/Chrome) ----
+      const Ctor = (
+        window as unknown as {
+          BarcodeDetector?: new (opts?: BarcodeDetectorOptions) => BarcodeDetectorLike;
+        }
+      ).BarcodeDetector;
+      if (Ctor) {
+        let detector: BarcodeDetectorLike;
+        try {
+          detector = new Ctor({ formats: NATIVE_FORMATS });
+        } catch {
+          detector = new Ctor();
+        }
+
+        let stopped = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let busy = false;
+        let fails = 0;
+
+        engineStops.push(() => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+        });
+
+        const loop = async () => {
+          if (stopped) return;
+          if (!busy && video.readyState >= 2) {
+            busy = true;
+            try {
+              const found = await detector.detect(video);
+              fails = 0;
+              if (found?.length)
+                handleDetected((found[0].rawValue || "").trim());
+            } catch {
+              fails += 1;
+              if (fails > 20) {
+                // This platform's native detector keeps throwing — retire it
+                // and let the ZXing engine (already running) carry the scan.
+                stopped = true;
+                return;
+              }
+            }
+            busy = false;
+          }
+          if (!stopped)
+            timer = setTimeout(() => void loop(), fails > 0 ? 400 : 250);
         };
 
-        let controls: { stop: () => void };
-        try {
-          controls = await reader.decodeFromConstraints(
-            { video: { facingMode: facing } },
-            video,
-            onResult,
-          );
-        } catch {
-          // Requested camera unavailable — fall back to the default one.
-          controls = await reader.decodeFromVideoDevice(
-            undefined,
-            video,
-            onResult,
-          );
-        }
+        void loop();
+        anyEngine = true;
+      }
+
+      // ---- Engine B: ZXing decoding the SAME stream continuously ----
+      // Runs always: sole engine on iOS/Firefox, second opinion elsewhere.
+      try {
+        const { BrowserMultiFormatReader } = await import("@zxing/browser");
+        const reader = new BrowserMultiFormatReader(undefined, {
+          delayBetweenScanAttempts: 500,
+          delayBetweenScanSuccess: 1200,
+        });
+        const controls = await reader.decodeFromStream(stream, video, (result) => {
+          if (result) handleDetected(result.getText().trim());
+        });
         if (isStale()) {
           try {
             controls.stop();
@@ -215,130 +334,28 @@ export function BarcodeScanner({
           }
           return;
         }
-        stopRef.current = () => {
+        engineStops.push(() => {
           try {
             controls.stop();
           } catch {
             /* ignore */
           }
-          if (videoRef.current) videoRef.current.srcObject = null;
-        };
-        void refreshMultiCam();
-      } catch (err) {
-        if (!isStale()) setCameraError(friendlyCameraError(err));
-      } finally {
-        if (!isStale()) setStarting(false);
-      }
-    };
-
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error(UNSUPPORTED);
-
-      let nativeOk = false;
-
-      // ---- Engine 1: native BarcodeDetector (Android/Chrome) ----
-      const Ctor = (
-        window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }
-      ).BarcodeDetector;
-      if (Ctor) {
-        let stream: MediaStream | null = null;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: facing,
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-            audio: false,
-          });
-          if (isStale()) {
-            killStream(stream);
-            return;
-          }
-          const video = videoRef.current;
-          if (!video) {
-            killStream(stream);
-            return;
-          }
-          video.srcObject = stream;
-          try {
-            await video.play();
-          } catch {
-            /* autoplay policies — muted+playsInline usually allowed */
-          }
-
-          const track = stream.getVideoTracks()[0];
-          const caps = (
-            track as MediaStreamTrack & {
-              getCapabilities?: () => { torch?: boolean };
-            }
-          ).getCapabilities?.();
-          if (caps?.torch) setHasTorch(true);
-
-          const detector = new Ctor();
-          let stopped = false;
-          let timer: ReturnType<typeof setTimeout> | undefined;
-          let busy = false;
-          let fails = 0;
-
-          const cleanupLocal = () => {
-            stopped = true;
-            if (timer) clearTimeout(timer);
-            killStream(stream);
-            if (videoRef.current) videoRef.current.srcObject = null;
-            setHasTorch(false);
-            setTorchOn(false);
-          };
-
-          const loop = async () => {
-            if (stopped) return;
-            if (!busy && video.readyState >= 2) {
-              busy = true;
-              try {
-                const found = await detector.detect(video);
-                fails = 0;
-                if (found?.length)
-                  handleDetected((found[0].rawValue || "").trim());
-              } catch {
-                fails += 1;
-                busy = false;
-                if (fails > 20) {
-                  // Native detection keeps failing on this browser —
-                  // tear down and fall back to the ZXing engine.
-                  cleanupLocal();
-                  void startZxing();
-                  return;
-                }
-                timer = setTimeout(() => void loop(), 400);
-                return;
-              }
-              busy = false;
-            }
-            if (!stopped) timer = setTimeout(() => void loop(), 250);
-          };
-
-          void loop();
-          if (isStale()) {
-            cleanupLocal();
-            return;
-          }
-          stopRef.current = cleanupLocal;
-          nativeOk = true;
-          void refreshMultiCam();
-        } catch (err) {
-          // Native path failed — clean partial state and fall back to ZXing,
-          // except for hard errors (permission/device) where ZXing cannot
-          // succeed either and would trigger a second permission prompt.
-          killStream(stream);
-          if (videoRef.current) videoRef.current.srcObject = null;
-          setHasTorch(false);
-          setTorchOn(false);
-          if (isHardCameraError(err)) throw err;
-        }
+        });
+        anyEngine = true;
+      } catch (zxErr) {
+        // ZXing failed to attach. If the native engine is alive we can keep
+        // scanning with it; otherwise there is no engine at all → error.
+        if (!anyEngine) throw zxErr;
       }
 
-      if (!nativeOk && !isStale()) await startZxing();
+      if (isStale()) {
+        stopAll();
+        return;
+      }
+      stopRef.current = stopAll;
+      void refreshMultiCam();
     } catch (err) {
+      stopAll();
       if (!isStale()) setCameraError(friendlyCameraError(err));
     } finally {
       if (!isStale()) setStarting(false);
@@ -348,13 +365,13 @@ export function BarcodeScanner({
   // Start/stop the camera when the modal opens/closes (or camera is switched).
   useEffect(() => {
     if (!open) return;
-    lastRef.current = { code: "", ts: 0 };
+    seenRef.current = { code: "", ts: 0 };
     void startCamera();
     return () => stopCamera();
   }, [open, startCamera, stopCamera]);
 
-  // Safety net: if the camera never starts within 12s, surface an error
-  // instead of leaving the user stuck on "Menyalakan kamera...".
+  // Safety net: if no engine is producing a camera feed within 12s, surface
+  // an error instead of leaving the user stuck on "Menyalakan kamera...".
   useEffect(() => {
     if (!open || !starting) return;
     const t = setTimeout(() => {
