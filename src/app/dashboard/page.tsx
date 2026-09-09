@@ -1,15 +1,18 @@
 "use client";
 
-// Main dashboard: KPI cards, 30-day sales chart, low stock list and the
-// recent activity feed. Data comes from /api/dashboard/stats and
-// /api/activities (both scoped to the signed-in user's business).
+// Main dashboard: KPI cards, 30-day transaction chart (sales + purchases),
+// low stock list and the recent activity feed. Data comes from
+// /api/dashboard/stats and /api/activities (both scoped to the signed-in
+// user's business). Auto-refreshes every 30 seconds so new transactions
+// show up without a manual reload.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   Area,
   AreaChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -20,6 +23,8 @@ import {
   ArrowUpRight,
   Package,
   Receipt,
+  RotateCw,
+  ShoppingCart,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -34,7 +39,7 @@ type StatsPayload = {
     tone: "primary" | "teal" | "coral";
     icon: string;
   }>;
-  salesSeries: Array<{ date: string; value: number }>;
+  salesSeries: Array<{ date: string; sales: number; purchases: number }>;
   lowStock: Array<{ name: string; quantity: number }>;
 };
 
@@ -51,6 +56,7 @@ const ICONS: Record<string, typeof TrendingUp> = {
   wallet: Wallet,
   receipt: Receipt,
   package: Package,
+  cart: ShoppingCart,
 };
 
 const TONE_BG: Record<string, string> = {
@@ -59,32 +65,55 @@ const TONE_BG: Record<string, string> = {
   coral: "bg-[color:var(--coral)]/10 text-[color:var(--coral)]",
 };
 
+const REFRESH_MS = 30_000;
+
 export default function DashboardPage() {
   const { data: session } = useSession();
   const [stats, setStats] = useState<StatsPayload | null>(null);
   const [activities, setActivities] = useState<Activity[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const loadedRef = useRef(false);
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([
-      fetch("/api/dashboard/stats").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/activities").then((r) => (r.ok ? r.json() : null)),
-    ])
-      .then(([s, a]) => {
-        if (!active) return;
-        if (s) setStats(s);
-        else setError("Gagal memuat statistik. Coba muat ulang halaman.");
-        if (a && Array.isArray(a.activities)) setActivities(a.activities);
-      })
-      .catch(() => {
-        if (active)
-          setError("Gagal memuat statistik. Coba muat ulang halaman.");
-      });
-    return () => {
-      active = false;
-    };
+  // Loads stats + activities. Reused by initial mount, the refresh
+  // button and the 30-second auto-sync interval.
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const [s, a] = await Promise.all([
+        fetch("/api/dashboard/stats").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/activities").then((r) => (r.ok ? r.json() : null)),
+      ]);
+      if (s) {
+        setStats(s);
+        setError(null);
+        loadedRef.current = true;
+      } else if (!loadedRef.current) {
+        setError("Gagal memuat statistik. Coba muat ulang halaman.");
+      }
+      if (a && Array.isArray(a.activities)) setActivities(a.activities);
+      setLastUpdated(new Date());
+    } catch {
+      if (!loadedRef.current)
+        setError("Gagal memuat statistik. Coba muat ulang halaman.");
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
+
+  // Initial load.
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Auto-sync: re-fetch every 30 seconds (only while the tab is visible).
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [load]);
 
   const firstName = (session?.user?.name ?? "Pengguna").split(" ")[0];
 
@@ -93,9 +122,32 @@ export default function DashboardPage() {
       <p className="text-sm text-foreground/60">
         Selamat datang kembali, {firstName} 👋
       </p>
-      <h2 className="mt-0.5 text-xl font-semibold sm:text-2xl">
-        Ringkasan bisnis hari ini
-      </h2>
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h2 className="text-xl font-semibold sm:text-2xl">
+          Ringkasan bisnis hari ini
+        </h2>
+        <button
+          type="button"
+          onClick={load}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/10 bg-card px-2.5 py-1 text-xs font-medium text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-50"
+          aria-label="Segarkan data"
+        >
+          <RotateCw
+            className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+          />
+          Segarkan
+        </button>
+        {lastUpdated ? (
+          <span className="text-xs text-foreground/40">
+            Diperbarui{" "}
+            {lastUpdated.toLocaleTimeString("id-ID", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+        ) : null}
+      </div>
 
       {error ? (
         <div
@@ -154,9 +206,9 @@ export default function DashboardPage() {
             <div className="rounded-xl border border-foreground/10 bg-card p-5 shadow-sm xl:col-span-2">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold">Penjualan 30 hari</h3>
+                  <h3 className="text-sm font-semibold">Transaksi 30 hari</h3>
                   <p className="text-xs text-foreground/50">
-                    Nilai total pesanan per hari (dalam juta rupiah)
+                    Nilai pesanan penjualan &amp; pembelian per hari
                   </p>
                 </div>
               </div>
@@ -170,6 +222,10 @@ export default function DashboardPage() {
                       <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.25} />
                         <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="purchaseFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--coral)" stopOpacity={0.2} />
+                        <stop offset="100%" stopColor="var(--coral)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -185,9 +241,19 @@ export default function DashboardPage() {
                       tickLine={false}
                       axisLine={false}
                       width={45}
+                      tickFormatter={(v: number) =>
+                        v >= 1_000_000
+                          ? `${(v / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })}jt`
+                          : v >= 1_000
+                            ? `${Math.round(v / 1_000)}rb`
+                            : `${v}`
+                      }
                     />
                     <Tooltip
-                      formatter={(value) => [fmtRp(Number(value) * 1_000_000), "Penjualan"]}
+                      formatter={(value, name) => [
+                        fmtRp(Number(value)),
+                        name === "sales" ? "Penjualan" : "Pembelian",
+                      ]}
                       labelStyle={{ fontSize: 12, color: "var(--foreground)" }}
                       contentStyle={{
                         borderRadius: 10,
@@ -195,12 +261,27 @@ export default function DashboardPage() {
                         fontSize: 12,
                       }}
                     />
+                    <Legend
+                      formatter={(value) =>
+                        value === "sales" ? "Penjualan" : "Pembelian"
+                      }
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: 12 }}
+                    />
                     <Area
                       type="monotone"
-                      dataKey="value"
+                      dataKey="sales"
                       stroke="var(--primary)"
                       strokeWidth={2}
                       fill="url(#salesFill)"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="purchases"
+                      stroke="var(--coral)"
+                      strokeWidth={2}
+                      fill="url(#purchaseFill)"
                     />
                   </AreaChart>
                 </ResponsiveContainer>

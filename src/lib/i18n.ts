@@ -1,4 +1,4 @@
-// Bilingual string table for FaizERP.id (Indonesian default + English)
+// Bilingual string table for Managemen Tokoku (Indonesian default + English)
 // Mirrors the original site content.
 
 export type Lang = "id" | "en";
@@ -8,9 +8,9 @@ export type Dict = typeof strings.id;
 export const strings = {
   id: {
     htmlLang: "id",
-    title: "ERP untuk UMKM Indonesia | FaizERP",
+    title: "ERP untuk UMKM Indonesia | Managemen Tokoku",
     description:
-      "FaizERP membantu UMKM mengelola stock, pembelian, penjualan, POS, finance, approval, dan laporan dalam satu sistem sederhana.",
+      "Managemen Tokoku membantu UMKM mengelola stock, pembelian, penjualan, POS, finance, approval, dan laporan dalam satu sistem sederhana.",
     nav: {
       features: "Fitur",
       documentation: "Dokumentasi",
@@ -32,7 +32,7 @@ export const strings = {
       microDesc2: "Pembelian, penjualan, invoice, dan pembayaran",
       microLabel3: "Kontrol",
       microDesc3: "Persetujuan, hak akses, laporan, dan audit trail",
-      dashboardAlt: "Tampilan dashboard FaizERP.id",
+      dashboardAlt: "Tampilan dashboard Managemen Tokoku",
     },
     problems: {
       title: "Beberapa pola yang sering terlihat",
@@ -60,7 +60,7 @@ export const strings = {
     features: {
       title: "Sistem yang sedang kami bangun",
       subtitle:
-        "FaizERP.id menghubungkan penjualan, pembelian, persediaan, keuangan, POS, dan persetujuan menggunakan data bisnis, cabang, gudang, pelanggan, pemasok, dan produk yang sama.",
+        "Managemen Tokoku menghubungkan penjualan, pembelian, persediaan, keuangan, POS, dan persetujuan menggunakan data bisnis, cabang, gudang, pelanggan, pemasok, dan produk yang sama.",
       items: [
         {
           title: "Bisnis & Master Data",
@@ -170,7 +170,7 @@ export const strings = {
       steps: ["Purchase", "Inventory", "Sales", "Invoice", "Payment"],
     },
     screenshots: {
-      title: "Lihat tampilan FaizERP",
+      title: "Lihat tampilan Managemen Tokoku",
       subtitle:
         "Beberapa tampilan yang digunakan untuk mengelola operasional sehari-hari.",
       cards: [
@@ -227,7 +227,7 @@ export const strings = {
       billingNote:
         "Bayar bulanan atau setiap 3, 6, atau 12 bulan. Hemat 5% untuk 6 bulan dan 10% untuk 12 bulan.",
       perMonth: "/ bulan",
-      includesAll: "Termasuk seluruh fitur FaizERP",
+      includesAll: "Termasuk seluruh fitur Managemen Tokoku",
       recommended: "Rekomendasi",
       cta: "Buat Akun",
       plans: [
@@ -252,13 +252,13 @@ export const strings = {
     philosophy: {
       title: "Gunakan sistem saat bisnis membutuhkannya",
       body:
-        "Spreadsheet tidak salah. Chat tidak salah. Kertas tidak salah. Setiap alat punya tahap ketika ia bekerja dengan baik. FaizERP.id dibangun untuk momen ketika operasional harian mulai meminta struktur yang lebih jelas.",
+        "Spreadsheet tidak salah. Chat tidak salah. Kertas tidak salah. Setiap alat punya tahap ketika ia bekerja dengan baik. Managemen Tokoku dibangun untuk momen ketika operasional harian mulai meminta struktur yang lebih jelas.",
     },
     faq: {
       title: "Pertanyaan Umum",
       items: [
         {
-          q: "Apakah FaizERP.id bisa dipakai untuk lebih dari satu warehouse?",
+          q: "Apakah Managemen Tokoku bisa dipakai untuk lebih dari satu warehouse?",
           a: "Bisa. Sistem mendukung akses branch dan warehouse agar stock bisa dikelola per lokasi.",
         },
         {
@@ -278,9 +278,9 @@ export const strings = {
       cta: "Buat Akun",
     },
     footer: {
-      brandLabel: "FaizERP Indonesia",
+      brandLabel: "Managemen Tokoku",
       address: "Sukamaju, Kec. Cilodong, Kota Depok, Jawa Barat 16417",
-      email: "support@faizerp.id",
+      email: "support@managementokoku.id",
       philosophy:
         "Dibangun sambil mengamati workflow praktis di bisnis Indonesia yang sedang bertumbuh.",
     },
@@ -315,9 +315,9 @@ export const strings = {
 
   en: {
     htmlLang: "en",
-    title: "ERP for Indonesian SMEs | FaizERP",
+    title: "ERP for Indonesian SMEs | Managemen Tokoku",
     description:
-      "FaizERP helps Indonesian SMEs manage stock, purchasing, sales, POS, finance, approvals, and reporting in one simple system.",
+      "Managemen Tokoku helps Indonesian SMEs manage stock, purchasing, sales, POS, finance, approvals, and reporting in one simple system.",
     nav: {
       features: "Features",
       documentation: "Documentation",
@@ -339,7 +339,7 @@ export const strings = {
       microDesc2: "Purchasing, sales, invoice, and payment",
       microLabel3: "Control",
       microDesc3: "Approvals, access rights, reporting, and audit trail",
-      dashboardAlt: "FaizERP.id dashboard view",
+      dashboardAlt: "Managemen Tokoku dashboard view",
     },
     problems: {
       title: "A few patterns we keep noticing",
@@ -367,7 +367,7 @@ export const strings = {
     features: {
       title: "The system we are building",
       subtitle:
-        "FaizERP.id connects sales, purchasing, inventory, finance, POS, and approvals using the same business, branch, warehouse, customer, supplier, and product data.",
+        "Managemen Tokoku connects sales, purchasing, inventory, finance, POS, and approvals using the same business, branch, warehouse, customer, supplier, and product data.",
       items: [
         {
           title: "Business & Master Data",
@@ -477,7 +477,7 @@ export const strings = {
       steps: ["Purchase", "Inventory", "Sales", "Invoice", "Payment"],
     },
     screenshots: {
-      title: "See FaizERP in action",
+      title: "See Managemen Tokoku in action",
       subtitle: "Several views used to manage day-to-day operations.",
       cards: [
         {
@@ -533,7 +533,7 @@ export const strings = {
       billingNote:
         "Pay monthly or every 3, 6, or 12 months. Save 5% for 6 months and 10% for 12 months.",
       perMonth: "/ month",
-      includesAll: "Includes all FaizERP features",
+      includesAll: "Includes all Managemen Tokoku features",
       recommended: "Recommended",
       cta: "Create an Account",
       plans: [
@@ -558,13 +558,13 @@ export const strings = {
     philosophy: {
       title: "Use a system when the business needs one",
       body:
-        "Spreadsheets are not wrong. Chat is not wrong. Paper is not wrong. Every tool has a stage where it works well. FaizERP.id is being built for the moment when daily operations start asking for a clearer structure.",
+        "Spreadsheets are not wrong. Chat is not wrong. Paper is not wrong. Every tool has a stage where it works well. Managemen Tokoku is being built for the moment when daily operations start asking for a clearer structure.",
     },
     faq: {
       title: "Common Questions",
       items: [
         {
-          q: "Can FaizERP.id be used for more than one warehouse?",
+          q: "Can Managemen Tokoku be used for more than one warehouse?",
           a: "Yes. The system supports branch and warehouse access so stock can be managed per location.",
         },
         {
@@ -584,9 +584,9 @@ export const strings = {
       cta: "Create an Account",
     },
     footer: {
-      brandLabel: "FaizERP Indonesia",
+      brandLabel: "Managemen Tokoku",
       address: "Sukamaju, Kec. Cilodong, Kota Depok, West Java 16417",
-      email: "support@faizerp.id",
+      email: "support@managementokoku.id",
       philosophy:
         "Built while observing practical workflows in growing Indonesian businesses.",
     },

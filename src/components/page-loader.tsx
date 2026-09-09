@@ -20,7 +20,7 @@ export function PageLoader() {
     >
       <div className="flex flex-col items-center gap-3">
         <FaizLogo className="h-12 w-12 animate-pulse" />
-        <span className="text-xs text-foreground/50">FaizERP.id</span>
+        <span className="text-xs text-foreground/50">Managemen Tokoku</span>
       </div>
     </div>
   );

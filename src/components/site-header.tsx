@@ -42,7 +42,7 @@ export function SiteHeader() {
         <a
           href="#home"
           className="flex items-center"
-          aria-label="FaizERP home"
+          aria-label="Beranda Managemen Tokoku"
         >
           <FaizWordmark variant="color" />
         </a>

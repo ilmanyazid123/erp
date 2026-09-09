@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth";
 import { DashboardShell } from "@/components/dashboard/shell";
 
 export const metadata = {
-  title: "Admin Panel | FaizERP",
+  title: "Admin Panel | Managemen Tokoku",
 };
 
 export default async function AdminLayout({

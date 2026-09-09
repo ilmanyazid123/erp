@@ -1,4 +1,4 @@
-// FaizERP — Prisma schema for PostgreSQL (Neon / Vercel Postgres / Supabase)
+// Managemen Tokoku — Prisma schema for PostgreSQL (Neon / Vercel Postgres / Supabase)
 // Models: User, Business (workspace), Branch, Warehouse, Product, Customer,
 // Supplier, InventoryItem, StockMovement, PurchaseOrder (+items), SalesOrder
 // (+items), Invoice, Payment, Approval, ChatMessage, Subscription, AuditLog.

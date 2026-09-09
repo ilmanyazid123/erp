@@ -1,6 +1,6 @@
-# FaizERP — Website Clone + Backend
+# Managemen Tokoku — Website + Backend
 
-Replikasi website marketing [FaizERP.id](https://faizerp.id/) dengan backend lengkap — ERP untuk UMKM Indonesia.
+Sistem ERP Managemen Tokoku dengan backend lengkap — ERP untuk UMKM Indonesia.
 
 Dibangun dengan Next.js 16, TypeScript, Tailwind CSS 4, NextAuth.js, Prisma (SQLite), dan lucide-react.
 

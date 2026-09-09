@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth";
 import { DashboardShell } from "@/components/dashboard/shell";
 
 export const metadata = {
-  title: "Dashboard | FaizERP",
+  title: "Dashboard | Managemen Tokoku",
 };
 
 export default async function DashboardLayout({

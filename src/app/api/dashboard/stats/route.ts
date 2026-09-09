@@ -1,11 +1,15 @@
 // GET /api/dashboard/stats
-// Aggregated stats for the dashboard mockup on the homepage. Falls back
-// gracefully if no data exists.
+// Aggregated stats for the main dashboard. Syncs ALL transactions:
+// every sales order, purchase order and payment in a 60-day window
+// (current 30 days + previous 30 days for real delta comparison),
+// scoped to the signed-in user's business.
 
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { unauthorized } from "@/lib/api-utils";
+
+const LOW_STOCK_THRESHOLD = 10;
 
 export async function GET() {
   const session = await getSession();
@@ -15,114 +19,194 @@ export async function GET() {
   const businessId = session.user.businessId;
   if (!businessId) return unauthorized();
 
-  // Compute stats from real data.
+  // Time windows: current 30 days + previous 30 days (for real deltas).
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const curStart = new Date(todayStart);
+  curStart.setDate(todayStart.getDate() - 29); // 30-day window inclusive of today
+  const prevStart = new Date(curStart);
+  prevStart.setDate(curStart.getDate() - 30);
+
   const [
     salesOrders,
-    paymentsIn,
-    paymentsOut,
+    purchaseOrders,
+    payments,
     pendingApprovals,
-    lowStockProducts,
+    lowStockItems,
+    lowStockCount,
     productCount,
     customerCount,
     supplierCount,
   ] = await Promise.all([
+    // ALL sales orders in the 60-day window (no take-limit — full sync).
     db.salesOrder.findMany({
-      where: { businessId },
+      where: {
+        businessId,
+        status: { not: "CANCELLED" },
+        createdAt: { gte: prevStart },
+      },
       select: { total: true, createdAt: true },
-      orderBy: { createdAt: "desc" },
-      take: 30,
     }),
+    // ALL purchase orders in the same window (previously missing entirely).
+    db.purchaseOrder.findMany({
+      where: {
+        businessId,
+        status: { not: "CANCELLED" },
+        createdAt: { gte: prevStart },
+      },
+      select: { total: true, createdAt: true },
+    }),
+    // ALL payments in the window — both money in and money out.
     db.payment.findMany({
-      where: { businessId, type: "SALES_RECEIPT" },
-      select: { amount: true, createdAt: true },
-      orderBy: { createdAt: "desc" },
-      take: 30,
+      where: { businessId, createdAt: { gte: prevStart } },
+      select: { amount: true, type: true, createdAt: true },
     }),
-    db.payment.findMany({
-      where: { businessId, type: "PURCHASE_DISBURSEMENT" },
-      select: { amount: true },
-    }),
-    db.approval.count({
-      where: { status: "PENDING" },
-    }),
+    // Scope approvals to this business (was leaking a global count).
+    db.approval.count({ where: { businessId, status: "PENDING" } }),
     db.inventoryItem.findMany({
-      where: { warehouse: { businessId }, quantity: { lte: 10 } },
+      where: { warehouse: { businessId }, quantity: { lte: LOW_STOCK_THRESHOLD } },
       select: { id: true, product: { select: { name: true } }, quantity: true },
+      orderBy: { quantity: "asc" },
       take: 12,
+    }),
+    // Real low-stock count (was capped at the list length before).
+    db.inventoryItem.count({
+      where: { warehouse: { businessId }, quantity: { lte: LOW_STOCK_THRESHOLD } },
     }),
     db.product.count({ where: { businessId } }),
     db.customer.count({ where: { businessId } }),
     db.supplier.count({ where: { businessId } }),
   ]);
 
-  const formatRp = (n: number) => `Rp ${(n / 1_000_000).toFixed(1)}M`;
+  // Short Indonesian currency format: jt (juta), rb (ribu), M (miliar).
+  const formatRp = (n: number) => {
+    if (n >= 1_000_000_000)
+      return `Rp ${(n / 1_000_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`;
+    if (n >= 1_000_000)
+      return `Rp ${(n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt`;
+    if (n >= 1_000)
+      return `Rp ${(n / 1_000).toLocaleString("id-ID", { maximumFractionDigits: 0 })} rb`;
+    return `Rp ${n.toLocaleString("id-ID")}`;
+  };
 
-  const salesTotal = salesOrders.reduce((acc, o) => acc + o.total, 0);
-  const cashIn = paymentsIn.reduce((acc, p) => acc + p.amount, 0);
-  const cashOut = paymentsOut.reduce((acc, p) => acc + p.amount, 0);
-  const cashNet = cashIn - cashOut;
+  const pctDelta = (cur: number, prev: number) => {
+    if (prev === 0) return cur > 0 ? "baru" : "0%";
+    const pct = ((cur - prev) / prev) * 100;
+    const sign = pct > 0 ? "+" : "";
+    return `${sign}${pct.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
+  };
 
-  // Build a 30-day sales series for the chart. We bucket sales by day.
-  const today = new Date();
-  const days: { date: string; value: number }[] = [];
+  const inWindow = (d: Date, start: Date, end: Date) => d >= start && d < end;
+
+  // ---- Totals: current 30 days vs previous 30 days ----
+  let salesCur = 0, salesPrev = 0;
+  let purchCur = 0, purchPrev = 0;
+  let payInCur = 0, payInPrev = 0;
+  let payOutCur = 0, payOutPrev = 0;
+
+  // 30-day per-day buckets for the chart (raw rupiah values).
+  const days: { date: string; sales: number; purchases: number }[] = [];
+  const dayKeys: string[] = [];
   for (let i = 29; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    days.push({ date: d.toISOString().slice(5, 10), value: 0 });
+    const d = new Date(todayStart);
+    d.setDate(todayStart.getDate() - i);
+    const key = d.toISOString().slice(5, 10);
+    dayKeys.push(key);
+    days.push({ date: key, sales: 0, purchases: 0 });
   }
+  const dayIndex = new Map(dayKeys.map((k, idx) => [k, idx]));
+
   salesOrders.forEach((o) => {
-    const key = o.createdAt.toISOString().slice(5, 10);
-    const bucket = days.find((d) => d.date === key);
-    if (bucket) bucket.value += o.total;
+    const t = o.createdAt.getTime();
+    if (o.createdAt >= curStart) {
+      salesCur += o.total;
+      const idx = dayIndex.get(o.createdAt.toISOString().slice(5, 10));
+      if (idx !== undefined) days[idx].sales += o.total;
+    } else if (inWindow(o.createdAt, prevStart, curStart)) {
+      salesPrev += o.total;
+    }
+    void t;
   });
-  // Normalize to millions for chart legibility
-  const salesSeries = days.map((d) => ({
-    date: d.date,
-    value: Math.round(d.value / 1000) / 1000,
-  }));
+
+  purchaseOrders.forEach((o) => {
+    if (o.createdAt >= curStart) {
+      purchCur += o.total;
+      const idx = dayIndex.get(o.createdAt.toISOString().slice(5, 10));
+      if (idx !== undefined) days[idx].purchases += o.total;
+    } else if (inWindow(o.createdAt, prevStart, curStart)) {
+      purchPrev += o.total;
+    }
+  });
+
+  payments.forEach((p) => {
+    const isOut = p.type === "PURCHASE_DISBURSEMENT";
+    if (p.createdAt >= curStart) {
+      if (isOut) payOutCur += p.amount;
+      else payInCur += p.amount;
+    } else if (inWindow(p.createdAt, prevStart, curStart)) {
+      if (isOut) payOutPrev += p.amount;
+      else payInPrev += p.amount;
+    }
+  });
+
+  const netCur = payInCur - payOutCur;
+  const netPrev = payInPrev - payOutPrev;
+
+  const stats = [
+    {
+      label: "Penjualan (30 hari)",
+      value: formatRp(salesCur),
+      delta: pctDelta(salesCur, salesPrev),
+      up: salesCur >= salesPrev,
+      tone: "primary",
+      icon: "trending-up",
+    },
+    {
+      label: "Pembelian (30 hari)",
+      value: formatRp(purchCur),
+      delta: pctDelta(purchCur, purchPrev),
+      up: purchCur >= purchPrev,
+      tone: "coral",
+      icon: "cart",
+    },
+    {
+      label: "Kas bersih (30 hari)",
+      value: formatRp(netCur),
+      delta: pctDelta(netCur, netPrev),
+      up: netCur >= netPrev,
+      tone: "teal",
+      icon: "wallet",
+    },
+    {
+      label: "Stok menipis",
+      value: `${lowStockCount} item`,
+      delta: lowStockCount > 0 ? "perlu restock" : "aman",
+      up: lowStockCount === 0,
+      tone: "primary",
+      icon: "package",
+    },
+  ];
 
   return NextResponse.json({
-    stats: [
-      {
-        label: "Sales",
-        value: formatRp(salesTotal),
-        delta: "+12.4%",
-        up: true,
-        tone: "primary",
-        icon: "trending-up",
-      },
-      {
-        label: "Cash",
-        value: formatRp(cashNet < 0 ? 0 : cashNet),
-        delta: cashNet >= 0 ? "+3.1%" : "−3.1%",
-        up: cashNet >= 0,
-        tone: "teal",
-        icon: "wallet",
-      },
-      {
-        label: "Approval",
-        value: `${pendingApprovals} request`,
-        delta: pendingApprovals > 0 ? `+${pendingApprovals}` : "0",
-        up: false,
-        tone: "coral",
-        icon: "receipt",
-      },
-      {
-        label: "Low Stock",
-        value: `${lowStockProducts.length} items`,
-        delta: lowStockProducts.length > 0 ? `+${Math.min(lowStockProducts.length, 5)}` : "0",
-        up: false,
-        tone: "primary",
-        icon: "package",
-      },
-    ],
-    salesSeries,
+    stats,
+    // Raw rupiah per day — formatted on the client with fmtRp.
+    salesSeries: days,
     counts: {
       products: productCount,
       customers: customerCount,
       suppliers: supplierCount,
     },
-    lowStock: lowStockProducts.slice(0, 12).map((i) => ({
+    approvals: { pending: pendingApprovals },
+    cash: {
+      in: payInCur,
+      out: payOutCur,
+      net: netCur,
+      inPrev: payInPrev,
+      outPrev: payOutPrev,
+      netPrev,
+    },
+    lowStock: lowStockItems.map((i) => ({
       name: i.product.name,
       quantity: i.quantity,
     })),

@@ -1,4 +1,4 @@
-// NextAuth configuration for FaizERP.
+// NextAuth configuration for Managemen Tokoku.
 // Uses Credentials provider (email + password) with bcrypt hashing and
 // Prisma as the user store. JWT session strategy so we don't need a
 // session table.

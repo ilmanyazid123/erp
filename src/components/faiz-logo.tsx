@@ -1,5 +1,5 @@
-// FaizERP logo - a small colored mark + wordmark.
-// Approximates the original `icon-full-color.png` + "FaizERP.id" wordmark style.
+// Managemen Tokoku logo — a small colored mark + wordmark.
+// (component file kept as faiz-logo.tsx for import stability)
 
 export function FaizLogo({
   className,
@@ -25,9 +25,14 @@ export function FaizLogo({
         rx="10"
         fill={variant === "color" ? "#2563eb" : "#2563eb"}
       />
+      {/* Letter "M" for Managemen Tokoku */}
       <path
-        d="M14 14h20v6H20v4h10v6H20v8h-6V14Z"
-        fill="white"
+        d="M13 35V13l11 13 11-13v22"
+        stroke="white"
+        strokeWidth="5"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
       <circle cx="34" cy="32" r="4" fill="#0d9488" />
       <circle cx="34" cy="14" r="3" fill="#dc2626" />
@@ -51,7 +56,7 @@ export function FaizWordmark({
     <div className={`flex items-center gap-2 ${className ?? ""}`}>
       <FaizLogo className="h-8 w-8" variant={variant} />
       <span className={`text-lg font-semibold tracking-tight ${textColor}`}>
-        FaizERP<span className="opacity-60">.id</span>
+        Managemen <span className="opacity-60">Tokoku</span>
       </span>
       {label ? (
         <span className={`ml-2 text-xs ${textColor} opacity-70`}>{label}</span>

@@ -1,6 +1,6 @@
 "use client";
 
-// CSS-based mockups of the FaizERP UI, used in the hero and screenshots
+// CSS-based mockups of the Managemen Tokoku UI, used in the hero and screenshots
 // sections of the homepage. Pure HTML/CSS — no images required.
 
 import { useEffect, useState } from "react";
@@ -148,7 +148,7 @@ function Sidebar() {
         <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary text-white text-[10px] font-bold">
           F
         </span>
-        <span className="text-xs font-semibold">FaizERP</span>
+        <span className="text-xs font-semibold">Managemen Tokoku</span>
       </div>
       <nav className="flex flex-col gap-1">
         {items.map(({ icon: Icon, label, active }) => (
@@ -212,7 +212,7 @@ export function DashboardMock({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="mock-window flex flex-col w-full">
-      <WindowChrome title="faizerp.id/dashboard" />
+      <WindowChrome title="managementokoku.id/dashboard" />
       <div className="flex flex-1 min-h-0">
         <Sidebar />
         <div className="flex-1 overflow-hidden">
@@ -395,7 +395,7 @@ export function POSMock() {
   ];
   return (
     <div className="mock-window flex flex-col w-full">
-      <WindowChrome title="faizerp.id/pos/sale" />
+      <WindowChrome title="managementokoku.id/pos/sale" />
       <div className="grid grid-cols-1 md:grid-cols-5">
         {/* Product list */}
         <div className="md:col-span-3 border-r border-foreground/10 p-3">
@@ -488,7 +488,7 @@ export function ChatMock() {
   ];
   return (
     <div className="mock-window flex flex-col w-full">
-      <WindowChrome title="faizerp.id/chat/inventory" />
+      <WindowChrome title="managementokoku.id/chat/inventory" />
       <div className="flex">
         <div className="hidden md:flex w-32 shrink-0 flex-col border-r border-foreground/10 p-2 gap-1">
           {["Inventory", "Sales", "Finance", "Approval"].map((c, i) => (
@@ -554,7 +554,7 @@ export function ChatMock() {
 export function LoginMock() {
   return (
     <div className="mock-window w-full">
-      <WindowChrome title="faizerp.id/login" />
+      <WindowChrome title="managementokoku.id/login" />
       <div className="flex flex-col items-center gap-3 p-6">
         <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white font-bold">
           F
@@ -591,7 +591,7 @@ export function LoginMock() {
 export function RegisterMock() {
   return (
     <div className="mock-window w-full">
-      <WindowChrome title="faizerp.id/register" />
+      <WindowChrome title="managementokoku.id/register" />
       <div className="flex flex-col items-center gap-3 p-6">
         <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white font-bold">
           F

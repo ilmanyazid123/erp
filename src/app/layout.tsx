@@ -13,11 +13,11 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "ERP untuk UMKM Indonesia | FaizERP",
+  title: "Managemen Tokoku — ERP untuk UMKM Indonesia",
   description:
-    "FaizERP membantu UMKM mengelola stock, pembelian, penjualan, POS, finance, approval, dan laporan dalam satu sistem sederhana.",
+    "Managemen Tokoku membantu UMKM mengelola stok, pembelian, penjualan, POS, keuangan, persetujuan, dan laporan dalam satu sistem sederhana.",
   keywords: [
-    "FaizERP",
+    "Managemen Tokoku",
     "ERP",
     "UMKM",
     "ERP Indonesia",
@@ -27,21 +27,21 @@ export const metadata: Metadata = {
     "sales",
     "finance",
   ],
-  authors: [{ name: "FaizERP.id" }],
+  authors: [{ name: "Managemen Tokoku" }],
   robots: { index: true, follow: true },
   openGraph: {
-    title: "ERP untuk UMKM Indonesia | FaizERP",
+    title: "Managemen Tokoku — ERP untuk UMKM Indonesia",
     description:
-      "FaizERP membantu UMKM mengelola stock, pembelian, penjualan, POS, finance, approval, dan laporan dalam satu sistem sederhana.",
-    url: "https://faizerp.id",
-    siteName: "FaizERP.id",
+      "Managemen Tokoku membantu UMKM mengelola stok, pembelian, penjualan, POS, keuangan, persetujuan, dan laporan dalam satu sistem sederhana.",
+    url: "https://erp-puce-two.vercel.app",
+    siteName: "Managemen Tokoku",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ERP untuk UMKM Indonesia | FaizERP",
+    title: "Managemen Tokoku — ERP untuk UMKM Indonesia",
     description:
-      "FaizERP membantu UMKM mengelola stock, pembelian, penjualan, POS, finance, approval, dan laporan dalam satu sistem sederhana.",
+      "Managemen Tokoku membantu UMKM mengelola stok, pembelian, penjualan, POS, keuangan, persetujuan, dan laporan dalam satu sistem sederhana.",
   },
 };
 

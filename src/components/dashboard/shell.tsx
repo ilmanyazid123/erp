@@ -1,7 +1,7 @@
 "use client";
 
 // Dashboard shell: sidebar + topbar + scrollable content area.
-// Sidebar menu mirrors the FaizERP modules promoted on the landing page:
+// Sidebar menu mirrors the ERP modules promoted on the landing page:
 // Dashboard, Inventory, Purchasing, Sales, Finance, Master, Chat, Settings.
 
 import { useEffect, useState } from "react";
@@ -95,10 +95,10 @@ function SidebarNav({ user, onNavigate }: { user: ShellUser; onNavigate?: () => 
       {/* Brand */}
       <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-foreground/10 px-5">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white">
-          F
+          M
         </span>
         <div className="flex flex-col">
-          <span className="text-sm font-semibold leading-tight">FaizERP</span>
+          <span className="text-sm font-semibold leading-tight">Managemen Tokoku</span>
           <span className="max-w-[140px] truncate text-[11px] leading-tight text-foreground/60">
             {user.role === "ADMIN"
               ? "Administrator"

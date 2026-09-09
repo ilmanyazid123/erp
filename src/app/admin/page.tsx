@@ -81,7 +81,7 @@ export default function AdminPage() {
     <div className="mx-auto max-w-7xl">
       <PageHeading
         title="Admin Panel"
-        subtitle="Kelola dan pantau seluruh toko yang tergabung di platform FaizERP."
+        subtitle="Kelola dan pantau seluruh toko yang tergabung di platform Managemen Tokoku."
         action={<ExportButton entity="businesses" label="Ekspor Daftar Toko" />}
       />
 
