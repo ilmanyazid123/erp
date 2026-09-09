@@ -61,7 +61,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo<LangContextType>(
-    () => ({ lang, t: strings[lang], setLang, toggleLang }),
+    () => ({ lang, t: strings[lang] as Dict, setLang, toggleLang }),
     [lang, setLang, toggleLang],
   );
 

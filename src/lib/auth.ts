@@ -53,13 +53,9 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // @ts-expect-error - augmenting token with custom fields
         token.id = (user as any).id;
-        // @ts-expect-error - augmenting token with custom fields
         token.businessId = (user as any).businessId;
-        // @ts-expect-error - augmenting token with custom fields
         token.businessName = (user as any).businessName;
-        // @ts-expect-error - augmenting token with custom fields
         token.role = (user as any).role;
       }
       return token;

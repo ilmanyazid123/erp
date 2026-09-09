@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LogIn, LogOut, Menu, X, User } from "lucide-react";
+import Link from "next/link";
+import { LayoutDashboard, LogIn, LogOut, Menu, X, User } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useLang, useAuthModal, signOut } from "@/components/providers";
 import { FaizWordmark } from "@/components/faiz-logo";
@@ -77,6 +78,13 @@ export function SiteHeader() {
                   {businessName ?? session?.user?.name ?? session?.user?.email}
                 </span>
               </div>
+              <Link
+                href="/dashboard"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-primary"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">Dashboard</span>
+              </Link>
               <button
                 type="button"
                 onClick={() => signOut({ callbackUrl: "/" })}

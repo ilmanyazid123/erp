@@ -15,6 +15,15 @@ export function AuthDialog() {
     setError(null);
   }, [modal]);
 
+  // Auto-open the modal when the URL carries ?login=1 or ?register=1
+  // (used by the /dashboard guard to bounce unauthenticated visitors).
+  useEffect(() => {
+    if (modal) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("login") === "1") open("login");
+    else if (params.get("register") === "1") open("register");
+  }, [modal, open]);
+
   // Lock scroll while modal is open.
   useEffect(() => {
     if (modal) {
@@ -79,8 +88,8 @@ export function AuthDialog() {
           open("login");
           return;
         }
-        // Success — refresh page so server components pick up the new session
-        window.location.reload();
+        // Success — go straight to the backend dashboard
+        window.location.href = "/dashboard";
       } else {
         // Login via next-auth credentials provider
         const email = String(formData.get("email") ?? "");
@@ -98,7 +107,8 @@ export function AuthDialog() {
           );
           return;
         }
-        window.location.reload();
+        // Success — go straight to the backend dashboard
+        window.location.href = "/dashboard";
       }
     } catch (err: any) {
       setError(err?.message ?? "Terjadi kesalahan. Coba lagi.");
