@@ -1,4 +1,4 @@
-// GET  /api/payments — recent payments
+// GET /api/payments — recent payments + cash-flow totals and a 30-day series.
 // POST /api/payments — record a payment against an invoice and update its status.
 
 import { NextResponse } from "next/server";
@@ -12,16 +12,66 @@ export async function GET() {
   const businessId = await getCurrentBusinessId();
   if (!businessId) return unauthorized();
 
-  const payments = await db.payment.findMany({
-    where: { businessId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: {
-      invoice: { select: { id: true, code: true, type: true } },
-    },
-  });
+  const [payments, totals, recent30] = await Promise.all([
+    db.payment.findMany({
+      where: { businessId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        invoice: { select: { id: true, code: true, type: true } },
+      },
+    }),
+    // All-time money in / out for the Finance cash-flow cards.
+    db.payment.groupBy({
+      by: ["type"],
+      where: { businessId },
+      _sum: { amount: true },
+    }),
+    // Last 30 days of payments for the cash-flow chart.
+    db.payment.findMany({
+      where: {
+        businessId,
+        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+      select: { amount: true, type: true, createdAt: true },
+    }),
+  ]);
 
-  return NextResponse.json({ payments });
+  const totalIn = totals.find((t) => t.type === "SALES_RECEIPT")?._sum.amount ?? 0;
+  const totalOut = totals.find((t) => t.type === "PURCHASE_DISBURSEMENT")?._sum.amount ?? 0;
+
+  // Build the 30-day in/out buckets (oldest first).
+  const today = new Date();
+  const buckets = new Map<string, { in: number; out: number }>();
+  const days: string[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    days.push(key);
+    buckets.set(key, { in: 0, out: 0 });
+  }
+  for (const p of recent30) {
+    const key = p.createdAt.toISOString().slice(0, 10);
+    const bucket = buckets.get(key);
+    if (!bucket) continue;
+    if (p.type === "SALES_RECEIPT") bucket.in += p.amount;
+    else bucket.out += p.amount;
+  }
+
+  return NextResponse.json({
+    payments,
+    totals: {
+      in: totalIn,
+      out: totalOut,
+      net: totalIn - totalOut,
+    },
+    series: days.map((date) => ({
+      date: date.slice(5, 10), // MM-DD
+      in: buckets.get(date)!.in,
+      out: buckets.get(date)!.out,
+    })),
+  });
 }
 
 export async function POST(req: Request) {

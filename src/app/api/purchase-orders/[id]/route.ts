@@ -90,6 +90,29 @@ export async function PATCH(
           refId: order.id,
         });
       }
+
+      // Sync to Finance: create the purchase invoice (payable) for this
+      // order (idempotent). The order code is unique per business.
+      const existingInvoice = await db.invoice.findFirst({
+        where: { businessId, refType: "PurchaseOrder", refId: order.id },
+        select: { id: true },
+      });
+      if (!existingInvoice) {
+        const due = new Date();
+        due.setDate(due.getDate() + 14);
+        await db.invoice.create({
+          data: {
+            businessId,
+            type: "PURCHASE",
+            code: `INV-${order.code}`,
+            supplierId: order.supplierId,
+            refType: "PurchaseOrder",
+            refId: order.id,
+            amount: order.total,
+            dueDate: due,
+          },
+        });
+      }
     }
 
     const updated = await db.purchaseOrder.update({

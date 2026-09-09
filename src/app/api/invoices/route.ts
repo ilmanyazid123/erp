@@ -31,5 +31,29 @@ export async function GET(req: Request) {
     },
   });
 
-  return NextResponse.json({ invoices });
+  // Resolve the source order codes (SO-... / PO-...) for the invoices.
+  const soIds = invoices
+    .filter((i) => i.refType === "SalesOrder" && i.refId)
+    .map((i) => i.refId as string);
+  const poIds = invoices
+    .filter((i) => i.refType === "PurchaseOrder" && i.refId)
+    .map((i) => i.refId as string);
+  const [sos, pos] = await Promise.all([
+    soIds.length
+      ? db.salesOrder.findMany({ where: { id: { in: soIds } }, select: { id: true, code: true } })
+      : Promise.resolve([]),
+    poIds.length
+      ? db.purchaseOrder.findMany({ where: { id: { in: poIds } }, select: { id: true, code: true } })
+      : Promise.resolve([]),
+  ]);
+  const refCodeMap = new Map<string, string>();
+  for (const o of sos) refCodeMap.set(o.id, o.code);
+  for (const o of pos) refCodeMap.set(o.id, o.code);
+
+  return NextResponse.json({
+    invoices: invoices.map((i) => ({
+      ...i,
+      refCode: i.refId ? (refCodeMap.get(i.refId) ?? null) : null,
+    })),
+  });
 }

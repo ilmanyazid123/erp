@@ -1,6 +1,8 @@
 // PATCH /api/sales-orders/[id] — change order status.
 // Status flow: DRAFT -> CONFIRMED -> DELIVERED, or CANCELLED.
-// CONFIRMED deducts stock (with a guard); CANCELLED from CONFIRMED restores it.
+// CONFIRMED deducts stock (with a guard) and auto-creates the SALES invoice
+// so the Finance menu reflects the money flow; CANCELLED from CONFIRMED
+// restores stock and cancels the invoice (unless it was already paid).
 
 import { NextResponse } from "next/server";
 import { getSession, getCurrentBusinessId } from "@/lib/auth";
@@ -74,6 +76,29 @@ export async function PATCH(
           refId: order.id,
         });
       }
+
+      // Sync to Finance: create the sales invoice for this order (idempotent).
+      // The order code is unique per business, so INV-<order.code> is too.
+      const existingInvoice = await db.invoice.findFirst({
+        where: { businessId, refType: "SalesOrder", refId: order.id },
+        select: { id: true },
+      });
+      if (!existingInvoice) {
+        const due = new Date();
+        due.setDate(due.getDate() + 14);
+        await db.invoice.create({
+          data: {
+            businessId,
+            type: "SALES",
+            code: `INV-${order.code}`,
+            customerId: order.customerId,
+            refType: "SalesOrder",
+            refId: order.id,
+            amount: order.total,
+            dueDate: due,
+          },
+        });
+      }
     }
 
     if (nextStatus === "CANCELLED" && order.status === "CONFIRMED") {
@@ -90,6 +115,17 @@ export async function PATCH(
           refId: order.id,
         });
       }
+
+      // Cancel the auto-created invoice too (unless money already came in).
+      await db.invoice.updateMany({
+        where: {
+          businessId,
+          refType: "SalesOrder",
+          refId: order.id,
+          paidAmount: 0,
+        },
+        data: { status: "CANCELLED" },
+      });
     }
 
     const updated = await db.salesOrder.update({

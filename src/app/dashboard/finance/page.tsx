@@ -5,6 +5,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   EmptyState,
   ErrorNote,
   FormDialog,
@@ -30,10 +40,14 @@ type Invoice = {
   status: string;
   dueDate: string | null;
   createdAt: string;
+  refCode: string | null;
   customer: { id: string; name: string } | null;
   supplier: { id: string; name: string } | null;
   payments: PaymentLite[];
 };
+
+type CashFlowTotals = { in: number; out: number; net: number };
+type CashFlowPoint = { date: string; in: number; out: number };
 
 type PaymentRow = {
   id: string;
@@ -47,6 +61,8 @@ type PaymentRow = {
 export default function FinancePage() {
   const [invoices, setInvoices] = useState<Invoice[] | null>(null);
   const [payments, setPayments] = useState<PaymentRow[] | null>(null);
+  const [totals, setTotals] = useState<CashFlowTotals | null>(null);
+  const [series, setSeries] = useState<CashFlowPoint[]>([]);
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +85,8 @@ export default function FinancePage() {
       const pay = await payRes.json();
       setInvoices(inv.invoices);
       setPayments(pay.payments);
+      setTotals(pay.totals ?? null);
+      setSeries(pay.series ?? []);
       setError(null);
     } catch {
       setError("Gagal memuat data keuangan.");
@@ -156,23 +174,79 @@ export default function FinancePage() {
 
       {error ? <ErrorNote message={error} /> : null}
 
-      {/* Summary cards */}
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Cash-flow summary cards */}
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-foreground/10 bg-card p-5 shadow-sm">
-          <p className="text-sm text-foreground/60">Total Tagihan</p>
-          <p className="mt-1 text-xl font-semibold">{fmtRp(summary.total)}</p>
-        </div>
-        <div className="rounded-xl border border-foreground/10 bg-card p-5 shadow-sm">
-          <p className="text-sm text-foreground/60">Sudah Diterima/Dibayar</p>
+          <p className="text-sm text-foreground/60">Uang Masuk (Penjualan)</p>
           <p className="mt-1 text-xl font-semibold text-[color:var(--teal)]">
-            {fmtRp(summary.paid)}
+            {fmtRp(totals?.in ?? 0)}
           </p>
+          <p className="mt-1 text-xs text-foreground/50">Total pembayaran diterima</p>
         </div>
         <div className="rounded-xl border border-foreground/10 bg-card p-5 shadow-sm">
-          <p className="text-sm text-foreground/60">Belum Dibayar</p>
+          <p className="text-sm text-foreground/60">Uang Keluar (Pembelian)</p>
           <p className="mt-1 text-xl font-semibold text-[color:var(--coral)]">
-            {fmtRp(summary.outstanding)}
+            {fmtRp(totals?.out ?? 0)}
           </p>
+          <p className="mt-1 text-xs text-foreground/50">Total pembayaran ke pemasok</p>
+        </div>
+        <div className="rounded-xl border border-foreground/10 bg-card p-5 shadow-sm">
+          <p className="text-sm text-foreground/60">Arus Kas Bersih</p>
+          <p
+            className={`mt-1 text-xl font-semibold ${
+              (totals?.net ?? 0) >= 0 ? "text-[color:var(--teal)]" : "text-[color:var(--coral)]"
+            }`}
+          >
+            {fmtRp(totals?.net ?? 0)}
+          </p>
+          <p className="mt-1 text-xs text-foreground/50">Selisih masuk − keluar</p>
+        </div>
+        <div className="rounded-xl border border-foreground/10 bg-card p-5 shadow-sm">
+          <p className="text-sm text-foreground/60">Tagihan Belum Lunas</p>
+          <p className="mt-1 text-xl font-semibold">{fmtRp(summary.outstanding)}</p>
+          <p className="mt-1 text-xs text-foreground/50">
+            Dari {openInvoices.length} invoice aktif
+          </p>
+        </div>
+      </div>
+
+      {/* 30-day cash-flow chart */}
+      <div className="mb-6 rounded-xl border border-foreground/10 bg-card p-5 shadow-sm">
+        <h3 className="mb-4 text-sm font-semibold">Aliran Uang 30 Hari Terakhir</h3>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={series} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.2)" vertical={false} />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                interval={4}
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v: number) =>
+                  v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}jt` : v >= 1000 ? `${Math.round(v / 1000)}rb` : String(v)
+                }
+                width={48}
+              />
+              <Tooltip
+                formatter={(value) => fmtRp(Number(value))}
+                labelFormatter={(label) => `Tanggal ${label}`}
+                contentStyle={{
+                  borderRadius: 8,
+                  border: "1px solid rgba(128,128,128,0.25)",
+                  fontSize: 12,
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="in" name="Uang Masuk" fill="#14b8a6" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="out" name="Uang Keluar" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
@@ -182,7 +256,7 @@ export default function FinancePage() {
       ) : invoices.length === 0 ? (
         <EmptyState
           title="Belum ada invoice"
-          description="Invoice muncul otomatis saat pesanan penjualan/pembelian ditagihkan."
+          description="Invoice dibuat otomatis saat pesanan penjualan dikonfirmasi atau pembelian diterima, lalu muncul di sini sebagai aliran uang."
         />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-card shadow-sm">
@@ -191,6 +265,7 @@ export default function FinancePage() {
               <tr className="border-b border-foreground/10 text-left text-xs uppercase tracking-wide text-foreground/50">
                 <th className="px-4 py-3 font-medium">Kode</th>
                 <th className="px-4 py-3 font-medium">Tipe</th>
+                <th className="px-4 py-3 font-medium">Sumber</th>
                 <th className="px-4 py-3 font-medium">Pihak</th>
                 <th className="px-4 py-3 font-medium">Jatuh Tempo</th>
                 <th className="px-4 py-3 font-medium text-right">Total</th>
@@ -212,6 +287,9 @@ export default function FinancePage() {
                     >
                       {inv.type === "SALES" ? "Penjualan" : "Pembelian"}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-foreground/50">
+                    {inv.refCode ?? "Manual"}
                   </td>
                   <td className="px-4 py-3 text-foreground/70">
                     {inv.customer?.name ?? inv.supplier?.name ?? "—"}
