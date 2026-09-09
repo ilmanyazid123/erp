@@ -94,3 +94,39 @@ export async function getCurrentBusinessId(): Promise<string | null> {
   // @ts-expect-error - augmenting session.user with custom fields
   return session?.user?.businessId ?? null;
 }
+
+// Current user context for role checks: null when logged out.
+export type SessionUser = {
+  id: string | null;
+  email: string;
+  role: string;
+  businessId: string | null;
+};
+
+export async function getSessionUser(): Promise<SessionUser | null> {
+  const session = await getSession();
+  if (!session?.user?.email) return null;
+  return {
+    id: ((session.user as unknown as { id?: string }).id ?? null),
+    email: session.user.email,
+    // @ts-expect-error - augmented field on session.user
+    role: (session.user.role as string) ?? "MEMBER",
+    // @ts-expect-error - augmented field on session.user
+    businessId: (session.user.businessId as string | null) ?? null,
+  };
+}
+
+// Role helpers — hierarchy: ADMIN (platform) > OWNER (toko) > MEMBER (staff).
+export function isAdmin(user: SessionUser | null): boolean {
+  return user?.role === "ADMIN";
+}
+
+export function isOwner(user: SessionUser | null): boolean {
+  return user?.role === "OWNER";
+}
+
+// Returns true when the user may touch the current business's data
+// (owner or staff of that business; ADMIN manages the platform itself).
+export function isBusinessMember(user: SessionUser | null): boolean {
+  return Boolean(user?.businessId);
+}

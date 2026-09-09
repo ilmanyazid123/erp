@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
+import { ExportButton } from "@/components/dashboard/export-button";
 import {
   Bar,
   BarChart,
@@ -155,6 +156,8 @@ export default function FinancePage() {
         title="Finance"
         subtitle="Tagihan penjualan & pembelian beserta status pembayarannya."
         action={
+          <div className="flex flex-wrap items-center gap-2">
+          <ExportButton entity="invoices" />
           <button
             type="button"
             onClick={() => setOpen(true)}
@@ -169,6 +172,7 @@ export default function FinancePage() {
             <Plus className="h-4 w-4" />
             Catat Pembayaran
           </button>
+          </div>
         }
       />
 

@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Search, Trash2 } from "lucide-react";
+import { ExportButton } from "@/components/dashboard/export-button";
 import {
   EmptyState,
   ErrorNote,
@@ -163,6 +164,8 @@ export default function PurchasingPage() {
         title="Purchasing"
         subtitle="Pesanan pembelian ke pemasok, lengkap dengan alur persetujuan."
         action={
+          <div className="flex flex-wrap items-center gap-2">
+          <ExportButton entity="purchases" />
           <button
             type="button"
             onClick={() => setOpen(true)}
@@ -179,6 +182,7 @@ export default function PurchasingPage() {
             <Plus className="h-4 w-4" />
             PO Baru
           </button>
+          </div>
         }
       />
 

@@ -2,7 +2,7 @@
 // PATCH /api/settings — update business profile (name, address placeholder)
 
 import { NextResponse } from "next/server";
-import { getSession, getCurrentBusinessId } from "@/lib/auth";
+import { getSession, getCurrentBusinessId, getSessionUser, isOwner } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { unauthorized, apiError } from "@/lib/api-utils";
 
@@ -34,6 +34,11 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
+  const actor = await getSessionUser();
+  if (!actor?.businessId) return unauthorized();
+  if (!isOwner(actor)) {
+    return apiError("Hanya pemilik toko yang dapat mengubah pengaturan.", 403);
+  }
   const session = await getSession();
   if (!session?.user?.email) return unauthorized();
   const businessId = await getCurrentBusinessId();

@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ExportButton } from "@/components/dashboard/export-button";
 import {
   EmptyState,
   ErrorNote,
@@ -149,10 +150,13 @@ export default function InventoryPage() {
         title="Inventory"
         subtitle="Kelola master data produk, harga, dan stok."
         action={
+          <div className="flex flex-wrap items-center gap-2">
+          <ExportButton entity="products" />
           <button type="button" onClick={openCreate} className={primaryBtnCls}>
             <Plus className="h-4 w-4" />
             Tambah Produk
           </button>
+          </div>
         }
       />
 

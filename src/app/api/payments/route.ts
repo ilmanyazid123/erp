@@ -2,15 +2,17 @@
 // POST /api/payments — record a payment against an invoice and update its status.
 
 import { NextResponse } from "next/server";
-import { getSession, getCurrentBusinessId } from "@/lib/auth";
+import { getSessionUser, isOwner } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { unauthorized, apiError } from "@/lib/api-utils";
 
 export async function GET() {
-  const session = await getSession();
-  if (!session?.user?.email) return unauthorized();
-  const businessId = await getCurrentBusinessId();
-  if (!businessId) return unauthorized();
+  const user = await getSessionUser();
+  if (!user?.businessId) return unauthorized();
+  if (!isOwner(user)) {
+    return apiError("Data keuangan hanya dapat diakses pemilik toko.", 403);
+  }
+  const businessId = user.businessId;
 
   const [payments, totals, recent30] = await Promise.all([
     db.payment.findMany({
@@ -75,10 +77,12 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session?.user?.email) return unauthorized();
-  const businessId = await getCurrentBusinessId();
-  if (!businessId) return unauthorized();
+  const user = await getSessionUser();
+  if (!user?.businessId) return unauthorized();
+  if (!isOwner(user)) {
+    return apiError("Hanya pemilik toko yang dapat mencatat pembayaran.", 403);
+  }
+  const businessId = user.businessId;
 
   try {
     const body = await req.json();

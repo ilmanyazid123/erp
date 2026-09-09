@@ -2,15 +2,17 @@
 // Optional query: ?type=SALES|PURCHASE&status=UNPAID|PARTIAL|PAID
 
 import { NextResponse } from "next/server";
-import { getSession, getCurrentBusinessId } from "@/lib/auth";
+import { getSessionUser, isOwner } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { unauthorized } from "@/lib/api-utils";
+import { unauthorized, apiError } from "@/lib/api-utils";
 
 export async function GET(req: Request) {
-  const session = await getSession();
-  if (!session?.user?.email) return unauthorized();
-  const businessId = await getCurrentBusinessId();
-  if (!businessId) return unauthorized();
+  const user = await getSessionUser();
+  if (!user?.businessId) return unauthorized();
+  if (!isOwner(user)) {
+    return apiError("Data keuangan hanya dapat diakses pemilik toko.", 403);
+  }
+  const businessId = user.businessId;
 
   const url = new URL(req.url);
   const type = url.searchParams.get("type");

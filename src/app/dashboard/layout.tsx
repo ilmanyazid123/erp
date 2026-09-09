@@ -20,6 +20,13 @@ export default async function DashboardLayout({
     redirect("/?login=1");
   }
 
+  // The platform administrator has no business workspace — send them to
+  // the dedicated admin panel instead of business dashboards.
+  const role = (session.user as unknown as { role?: string }).role;
+  if (role === "ADMIN") {
+    redirect("/admin");
+  }
+
   const user = {
     name: session.user.name,
     email: session.user.email,

@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Package,
   Settings,
+  ShieldCheck,
   ShoppingCart,
   Store,
   Users,
@@ -53,8 +54,38 @@ const MENU_MANAGEMENT: MenuItem[] = [
   { href: "/dashboard/settings", label: "Pengaturan", icon: Settings },
 ];
 
+// Staff (jaga toko): operational menus only — Finance & Settings are
+// owner-only. Master Data stays visible for day-to-day data entry.
+const MENU_MAIN_STAFF: MenuItem[] = MENU_MAIN.filter((m) => m.href !== "/dashboard/finance");
+const MENU_MANAGEMENT_STAFF: MenuItem[] = MENU_MANAGEMENT.filter(
+  (m) => m.href !== "/dashboard/settings",
+);
+
+// Platform administrator: manages the website itself, not a single toko.
+const MENU_ADMIN: MenuItem[] = [
+  { href: "/admin", label: "Admin Panel", icon: ShieldCheck },
+];
+
+function menusForRole(role?: string | null) {
+  if (role === "ADMIN") {
+    return { main: MENU_ADMIN, management: [] as MenuItem[] };
+  }
+  if (role === "MEMBER") {
+    return { main: MENU_MAIN_STAFF, management: MENU_MANAGEMENT_STAFF };
+  }
+  return { main: MENU_MAIN, management: MENU_MANAGEMENT };
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: "Administrator",
+  OWNER: "Pemilik Toko",
+  MANAGER: "Manajer",
+  MEMBER: "Staff Toko",
+};
+
 function SidebarNav({ user, onNavigate }: { user: ShellUser; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { main, management } = menusForRole(user.role);
 
   const isActive = (href: string) =>
     href === "/dashboard" ? pathname === href : pathname.startsWith(href);
@@ -69,18 +100,22 @@ function SidebarNav({ user, onNavigate }: { user: ShellUser; onNavigate?: () => 
         <div className="flex flex-col">
           <span className="text-sm font-semibold leading-tight">FaizERP</span>
           <span className="max-w-[140px] truncate text-[11px] leading-tight text-foreground/60">
-            {user.businessName ?? "Workspace"}
+            {user.role === "ADMIN"
+              ? "Administrator"
+              : (user.businessName ?? "Workspace")}
           </span>
         </div>
       </div>
 
       {/* Menu */}
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Menu utama">
-        <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-foreground/40">
-          Menu Utama
-        </p>
+        {main.length > 0 ? (
+          <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-foreground/40">
+            Menu Utama
+          </p>
+        ) : null}
         <ul className="flex flex-col gap-1">
-          {MENU_MAIN.map(({ href, label, icon: Icon }) => (
+          {main.map(({ href, label, icon: Icon }) => (
             <li key={href}>
               <Link
                 href={href}
@@ -99,28 +134,32 @@ function SidebarNav({ user, onNavigate }: { user: ShellUser; onNavigate?: () => 
           ))}
         </ul>
 
-        <p className="mb-2 mt-6 px-2 text-[11px] font-semibold uppercase tracking-wider text-foreground/40">
-          Manajemen
-        </p>
-        <ul className="flex flex-col gap-1">
-          {MENU_MANAGEMENT.map(({ href, label, icon: Icon }) => (
-            <li key={href}>
-              <Link
-                href={href}
-                onClick={onNavigate}
-                aria-current={isActive(href) ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                  isActive(href)
-                    ? "bg-primary/10 font-medium text-primary"
-                    : "text-foreground/70 hover:bg-foreground/5 hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {management.length > 0 ? (
+          <>
+            <p className="mb-2 mt-6 px-2 text-[11px] font-semibold uppercase tracking-wider text-foreground/40">
+              Manajemen
+            </p>
+            <ul className="flex flex-col gap-1">
+              {management.map(({ href, label, icon: Icon }) => (
+                <li key={href}>
+                  <Link
+                    href={href}
+                    onClick={onNavigate}
+                    aria-current={isActive(href) ? "page" : undefined}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                      isActive(href)
+                        ? "bg-primary/10 font-medium text-primary"
+                        : "text-foreground/70 hover:bg-foreground/5 hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
       </nav>
 
       {/* User card */}
@@ -134,7 +173,7 @@ function SidebarNav({ user, onNavigate }: { user: ShellUser; onNavigate?: () => 
               {user.name ?? "Pengguna"}
             </p>
             <p className="truncate text-[11px] text-foreground/60">
-              {user.role ?? "MEMBER"}
+              {ROLE_LABEL[user.role ?? ""] ?? user.role ?? "MEMBER"}
             </p>
           </div>
         </div>
@@ -162,11 +201,11 @@ export function DashboardShell({
   }, [pathname]);
 
   const currentLabel =
-    [...MENU_MAIN, ...MENU_MANAGEMENT].find((m) =>
+    [...MENU_MAIN, ...MENU_MANAGEMENT, ...MENU_ADMIN].find((m) =>
       m.href === "/dashboard"
         ? pathname === m.href
         : pathname.startsWith(m.href),
-    )?.label ?? "Dashboard";
+    )?.label ?? (pathname.startsWith("/admin") ? "Admin Panel" : "Dashboard");
 
   async function handleSignOut() {
     await signOut({ redirect: false });
