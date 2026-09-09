@@ -22,6 +22,8 @@ export async function PATCH(
     const data: Record<string, unknown> = {};
     if (body.name !== undefined) data.name = String(body.name).trim();
     if (body.sku !== undefined) data.sku = String(body.sku).trim();
+    if (body.barcode !== undefined)
+      data.barcode = body.barcode ? String(body.barcode).trim() : null;
     if (body.category !== undefined)
       data.category = body.category ? String(body.category) : null;
     if (body.brand !== undefined)

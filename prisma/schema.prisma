@@ -99,6 +99,7 @@ model Product {
   businessId  String
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   sku         String
+  barcode     String?  // EAN-13/UPC/QR — scanned at sales & purchasing input
   name        String
   category    String?
   brand       String?
@@ -114,6 +115,7 @@ model Product {
   salesItems  SalesOrderItem[]
 
   @@unique([businessId, sku])
+  @@index([businessId, barcode])
 }
 
 model Customer {

@@ -4,8 +4,12 @@
 // approval wiring. Status: DRAFT -> SUBMITTED -> APPROVED -> RECEIVED.
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, ScanLine, Search, Trash2 } from "lucide-react";
 import { ExportButton } from "@/components/dashboard/export-button";
+import {
+  BarcodeScanner,
+  type ScanStatus,
+} from "@/components/dashboard/barcode-scanner";
 import {
   EmptyState,
   ErrorNote,
@@ -42,7 +46,13 @@ type PO = {
 };
 
 type Supplier = { id: string; name: string };
-type Product = { id: string; name: string; unit: string | null; priceBuy: number };
+type Product = {
+  id: string;
+  name: string;
+  unit: string | null;
+  priceBuy: number;
+  inventory?: Array<{ quantity: number }>;
+};
 
 type DraftItem = { productId: string; quantity: string; price: string };
 
@@ -69,6 +79,10 @@ export default function PurchasingPage() {
   const [notes, setNotes] = useState("");
   const [draftItems, setDraftItems] = useState<DraftItem[]>([{ ...emptyDraft }]);
   const [saving, setSaving] = useState(false);
+
+  // Barcode scanner state
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanStatus, setScanStatus] = useState<ScanStatus>(null);
 
   const load = useCallback(async (q: string) => {
     try {
@@ -103,6 +117,51 @@ export default function PurchasingPage() {
 
   const productById = (id: string) => products.find((p) => p.id === id);
 
+  // Called by the barcode scanner: look up the scanned code and add the
+  // matching product to the draft (or bump its quantity if already there).
+  const handleScan = useCallback(async (code: string) => {
+    try {
+      const res = await fetch(
+        `/api/products?barcode=${encodeURIComponent(code)}`,
+      );
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const p: Product | undefined = data.products?.[0];
+      if (!p) {
+        setScanStatus({
+          ok: false,
+          text: `Barcode "${code}" tidak ditemukan. Daftarkan dulu di Inventory (field Barcode).`,
+        });
+        return;
+      }
+      const stock = p.inventory?.reduce((a, i) => a + i.quantity, 0);
+      setDraftItems((prev) => {
+        const same = prev.findIndex((i) => i.productId === p.id);
+        if (same >= 0) {
+          const next = [...prev];
+          next[same] = {
+            ...next[same],
+            quantity: String((Number(next[same].quantity) || 0) + 1),
+          };
+          return next;
+        }
+        const empty = prev.findIndex((i) => !i.productId);
+        if (empty >= 0) {
+          const next = [...prev];
+          next[empty] = { ...next[empty], productId: p.id, quantity: "1", price: "" };
+          return next;
+        }
+        return [...prev, { productId: p.id, quantity: "1", price: "" }];
+      });
+      setScanStatus({
+        ok: true,
+        text: `${p.name} ditambahkan ke pembelian${stock !== undefined ? ` · stok ${stock}` : ""}`,
+      });
+    } catch {
+      setScanStatus({ ok: false, text: "Gagal mencari produk. Coba scan ulang." });
+    }
+  }, []);
+
   const draftTotal = draftItems.reduce((acc, it) => {
     const price = it.price !== "" ? Number(it.price) : productById(it.productId)?.priceBuy ?? 0;
     return acc + (Number(it.quantity) || 0) * (price || 0);
@@ -128,6 +187,8 @@ export default function PurchasingPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Gagal membuat PO.");
       setOpen(false);
+      setScanOpen(false);
+      setScanStatus(null);
       setSupplierId("");
       setNotes("");
       setDraftItems([{ ...emptyDraft }]);
@@ -312,8 +373,22 @@ export default function PurchasingPage() {
             </label>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
             <span className={labelCls}>Item *</span>
+            <button
+              type="button"
+              onClick={() => {
+                setScanStatus(null);
+                setScanOpen(true);
+              }}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary/10 px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+            >
+              <ScanLine className="h-4 w-4" />
+              Scan Barcode
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-2">
             {draftItems.map((item, idx) => (
               <div key={idx} className="flex flex-wrap items-center gap-2">
                 <select
@@ -400,6 +475,15 @@ export default function PurchasingPage() {
           </div>
         </form>
       </FormDialog>
+
+      {/* Barcode / QR scanner (camera + manual fallback) */}
+      <BarcodeScanner
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onDetected={handleScan}
+        title="Scan Produk — Pembelian"
+        status={scanStatus}
+      />
     </div>
   );
 }

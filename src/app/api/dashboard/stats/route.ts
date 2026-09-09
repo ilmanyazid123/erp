@@ -3,13 +3,185 @@
 // every sales order, purchase order and payment in a 60-day window
 // (current 30 days + previous 30 days for real delta comparison),
 // scoped to the signed-in user's business.
+//
+// MEMBER (staff/anggota) users get an operational variant: today's
+// sales, order flow, items needing action, low stock, recent orders
+// and a 7-day sales chart — no cash/finance figures (owner-only).
 
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { unauthorized } from "@/lib/api-utils";
 
 const LOW_STOCK_THRESHOLD = 10;
+
+// Short Indonesian currency format: jt (juta), rb (ribu), M (miliar).
+const formatRp = (n: number) => {
+  if (n >= 1_000_000_000)
+    return `Rp ${(n / 1_000_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`;
+  if (n >= 1_000_000)
+    return `Rp ${(n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt`;
+  if (n >= 1_000)
+    return `Rp ${(n / 1_000).toLocaleString("id-ID", { maximumFractionDigits: 0 })} rb`;
+  return `Rp ${n.toLocaleString("id-ID")}`;
+};
+
+const pctDelta = (cur: number, prev: number) => {
+  if (prev === 0) return cur > 0 ? "baru" : "0%";
+  const pct = ((cur - prev) / prev) * 100;
+  const sign = pct > 0 ? "+" : "";
+  return `${sign}${pct.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
+};
+
+// Operational dashboard for MEMBER (staff toko / user anggota).
+async function memberStats(businessId: string) {
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(todayStart.getDate() - 1);
+  const weekStart = new Date(todayStart);
+  weekStart.setDate(todayStart.getDate() - 6); // 7 days incl. today
+
+  const [
+    soToday,
+    poTodayCount,
+    soYesterday,
+    poYesterdayCount,
+    draftSO,
+    openPO,
+    lowStockItems,
+    lowStockCount,
+    recentOrders,
+    weekSOs,
+  ] = await Promise.all([
+    db.salesOrder.findMany({
+      where: { businessId, createdAt: { gte: todayStart } },
+      select: { total: true },
+    }),
+    db.purchaseOrder.count({
+      where: { businessId, createdAt: { gte: todayStart } },
+    }),
+    db.salesOrder.findMany({
+      where: {
+        businessId,
+        createdAt: { gte: yesterdayStart, lt: todayStart },
+      },
+      select: { total: true },
+    }),
+    db.purchaseOrder.count({
+      where: {
+        businessId,
+        createdAt: { gte: yesterdayStart, lt: todayStart },
+      },
+    }),
+    db.salesOrder.count({ where: { businessId, status: "DRAFT" } }),
+    db.purchaseOrder.count({
+      where: { businessId, status: { in: ["DRAFT", "SUBMITTED"] } },
+    }),
+    db.inventoryItem.findMany({
+      where: { warehouse: { businessId }, quantity: { lte: LOW_STOCK_THRESHOLD } },
+      select: { id: true, product: { select: { name: true } }, quantity: true },
+      orderBy: { quantity: "asc" },
+      take: 12,
+    }),
+    db.inventoryItem.count({
+      where: { warehouse: { businessId }, quantity: { lte: LOW_STOCK_THRESHOLD } },
+    }),
+    db.salesOrder.findMany({
+      where: { businessId },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: {
+        id: true,
+        code: true,
+        total: true,
+        status: true,
+        createdAt: true,
+        customer: { select: { name: true } },
+      },
+    }),
+    db.salesOrder.findMany({
+      where: {
+        businessId,
+        status: { not: "CANCELLED" },
+        createdAt: { gte: weekStart },
+      },
+      select: { total: true, createdAt: true },
+    }),
+  ]);
+
+  // 7-day per-day sales series for the staff chart.
+  const days: { date: string; sales: number; purchases: number }[] = [];
+  const dayIndex = new Map<string, number>();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(todayStart);
+    d.setDate(todayStart.getDate() - i);
+    const key = d.toISOString().slice(5, 10);
+    dayIndex.set(key, days.length);
+    days.push({ date: key, sales: 0, purchases: 0 });
+  }
+  weekSOs.forEach((o) => {
+    const idx = dayIndex.get(o.createdAt.toISOString().slice(5, 10));
+    if (idx !== undefined) days[idx].sales += o.total;
+  });
+
+  const salesToday = soToday.reduce((a, o) => a + o.total, 0);
+  const salesYesterday = soYesterday.reduce((a, o) => a + o.total, 0);
+  const ordersToday = soToday.length + poTodayCount;
+  const ordersYesterday = soYesterday.length + poYesterdayCount;
+
+  return NextResponse.json({
+    role: "MEMBER",
+    stats: [
+      {
+        label: "Penjualan hari ini",
+        value: formatRp(salesToday),
+        delta: pctDelta(salesToday, salesYesterday),
+        up: salesToday >= salesYesterday,
+        tone: "primary",
+        icon: "trending-up",
+      },
+      {
+        label: "Pesanan hari ini",
+        value: `${ordersToday} pesanan`,
+        delta: pctDelta(ordersToday, ordersYesterday),
+        up: ordersToday >= ordersYesterday,
+        tone: "teal",
+        icon: "receipt",
+      },
+      {
+        label: "Menunggu aksi",
+        value: `${draftSO + openPO} pesanan`,
+        delta: "perlu diproses",
+        up: draftSO + openPO === 0,
+        tone: "coral",
+        icon: "clock",
+      },
+      {
+        label: "Stok menipis",
+        value: `${lowStockCount} item`,
+        delta: lowStockCount > 0 ? "perlu restock" : "aman",
+        up: lowStockCount === 0,
+        tone: "primary",
+        icon: "package",
+      },
+    ],
+    salesSeries: days,
+    lowStock: lowStockItems.map((i) => ({
+      name: i.product.name,
+      quantity: i.quantity,
+    })),
+    orders: recentOrders.map((o) => ({
+      id: o.id,
+      code: o.code,
+      total: o.total,
+      status: o.status,
+      createdAt: o.createdAt.toISOString(),
+      customer: o.customer.name,
+    })),
+  });
+}
 
 export async function GET() {
   const session = await getSession();
@@ -18,6 +190,10 @@ export async function GET() {
   // @ts-expect-error - augmented field on session.user
   const businessId = session.user.businessId;
   if (!businessId) return unauthorized();
+
+  // Staff/anggota get the operational variant (no cash figures).
+  const sessionUser = await getSessionUser();
+  if (sessionUser?.role === "MEMBER") return memberStats(businessId);
 
   // Time windows: current 30 days + previous 30 days (for real deltas).
   const now = new Date();
@@ -78,24 +254,6 @@ export async function GET() {
     db.customer.count({ where: { businessId } }),
     db.supplier.count({ where: { businessId } }),
   ]);
-
-  // Short Indonesian currency format: jt (juta), rb (ribu), M (miliar).
-  const formatRp = (n: number) => {
-    if (n >= 1_000_000_000)
-      return `Rp ${(n / 1_000_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} M`;
-    if (n >= 1_000_000)
-      return `Rp ${(n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt`;
-    if (n >= 1_000)
-      return `Rp ${(n / 1_000).toLocaleString("id-ID", { maximumFractionDigits: 0 })} rb`;
-    return `Rp ${n.toLocaleString("id-ID")}`;
-  };
-
-  const pctDelta = (cur: number, prev: number) => {
-    if (prev === 0) return cur > 0 ? "baru" : "0%";
-    const pct = ((cur - prev) / prev) * 100;
-    const sign = pct > 0 ? "+" : "";
-    return `${sign}${pct.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`;
-  };
 
   const inWindow = (d: Date, start: Date, end: Date) => d >= start && d < end;
 

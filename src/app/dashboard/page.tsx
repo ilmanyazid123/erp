@@ -21,6 +21,7 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Clock,
   Package,
   Receipt,
   RotateCw,
@@ -28,9 +29,10 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { fmtRp, Loading } from "@/components/dashboard/ui";
+import { fmtRp, fmtDate, Loading, StatusBadge } from "@/components/dashboard/ui";
 
 type StatsPayload = {
+  role?: string;
   stats: Array<{
     label: string;
     value: string;
@@ -41,6 +43,14 @@ type StatsPayload = {
   }>;
   salesSeries: Array<{ date: string; sales: number; purchases: number }>;
   lowStock: Array<{ name: string; quantity: number }>;
+  orders?: Array<{
+    id: string;
+    code: string;
+    total: number;
+    status: string;
+    createdAt: string;
+    customer: string;
+  }>;
 };
 
 type Activity = {
@@ -57,6 +67,7 @@ const ICONS: Record<string, typeof TrendingUp> = {
   receipt: Receipt,
   package: Package,
   cart: ShoppingCart,
+  clock: Clock,
 };
 
 const TONE_BG: Record<string, string> = {
@@ -116,6 +127,12 @@ export default function DashboardPage() {
   }, [load]);
 
   const firstName = (session?.user?.name ?? "Pengguna").split(" ")[0];
+  // MEMBER (staff toko / user anggota) gets the operational variant.
+  const isMember =
+    stats?.role === "MEMBER" || session?.user?.role === "MEMBER";
+  const series = isMember
+    ? (stats?.salesSeries ?? []).slice(-7)
+    : (stats?.salesSeries ?? []);
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -124,7 +141,7 @@ export default function DashboardPage() {
       </p>
       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
         <h2 className="text-xl font-semibold sm:text-2xl">
-          Ringkasan bisnis hari ini
+          {isMember ? "Dashboard Toko" : "Ringkasan bisnis hari ini"}
         </h2>
         <button
           type="button"
@@ -206,16 +223,20 @@ export default function DashboardPage() {
             <div className="rounded-xl border border-foreground/10 bg-card p-5 shadow-sm xl:col-span-2">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold">Transaksi 30 hari</h3>
+                  <h3 className="text-sm font-semibold">
+                    {isMember ? "Penjualan 7 hari" : "Transaksi 30 hari"}
+                  </h3>
                   <p className="text-xs text-foreground/50">
-                    Nilai pesanan penjualan &amp; pembelian per hari
+                    {isMember
+                      ? "Nilai pesanan penjualan per hari"
+                      : "Nilai pesanan penjualan & pembelian per hari"}
                   </p>
                 </div>
               </div>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
-                    data={stats.salesSeries}
+                    data={series}
                     margin={{ top: 5, right: 5, left: -10, bottom: 0 }}
                   >
                     <defs>
@@ -234,7 +255,7 @@ export default function DashboardPage() {
                       tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                       tickLine={false}
                       axisLine={false}
-                      interval={4}
+                      interval={isMember ? 0 : 4}
                     />
                     <YAxis
                       tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
@@ -261,14 +282,16 @@ export default function DashboardPage() {
                         fontSize: 12,
                       }}
                     />
-                    <Legend
-                      formatter={(value) =>
-                        value === "sales" ? "Penjualan" : "Pembelian"
-                      }
-                      iconType="circle"
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: 12 }}
-                    />
+                    {isMember ? null : (
+                      <Legend
+                        formatter={(value) =>
+                          value === "sales" ? "Penjualan" : "Pembelian"
+                        }
+                        iconType="circle"
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: 12 }}
+                      />
+                    )}
                     <Area
                       type="monotone"
                       dataKey="sales"
@@ -276,13 +299,15 @@ export default function DashboardPage() {
                       strokeWidth={2}
                       fill="url(#salesFill)"
                     />
-                    <Area
-                      type="monotone"
-                      dataKey="purchases"
-                      stroke="var(--coral)"
-                      strokeWidth={2}
-                      fill="url(#purchaseFill)"
-                    />
+                    {isMember ? null : (
+                      <Area
+                        type="monotone"
+                        dataKey="purchases"
+                        stroke="var(--coral)"
+                        strokeWidth={2}
+                        fill="url(#purchaseFill)"
+                      />
+                    )}
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -323,6 +348,46 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+
+          {/* Recent orders — operational panel for staff/anggota */}
+          {isMember && stats.orders ? (
+            <div className="mt-6 rounded-xl border border-foreground/10 bg-card p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Pesanan terbaru</h3>
+                <span className="inline-flex h-6 items-center rounded-full bg-primary/10 px-2 text-[11px] font-medium text-primary">
+                  {stats.orders.length} SO
+                </span>
+              </div>
+              {stats.orders.length === 0 ? (
+                <p className="py-4 text-sm text-foreground/50">
+                  Belum ada pesanan penjualan.
+                </p>
+              ) : (
+                <ul className="flex flex-col divide-y divide-foreground/5">
+                  {stats.orders.map((o) => (
+                    <li
+                      key={o.id}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5"
+                    >
+                      <span className="font-mono text-xs text-foreground/60">
+                        {o.code}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        {o.customer}
+                      </span>
+                      <StatusBadge status={o.status} />
+                      <span className="w-24 shrink-0 text-right text-sm font-medium">
+                        {fmtRp(o.total)}
+                      </span>
+                      <span className="w-20 shrink-0 text-right text-xs text-foreground/50">
+                        {fmtDate(o.createdAt)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
 
           {/* Activities */}
           <div className="mt-6 rounded-xl border border-foreground/10 bg-card p-5 shadow-sm">

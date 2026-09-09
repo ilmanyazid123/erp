@@ -3,8 +3,12 @@
 // Inventory: product master data with search + create/edit/delete.
 
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, ScanLine, Search, Trash2 } from "lucide-react";
 import { ExportButton } from "@/components/dashboard/export-button";
+import {
+  BarcodeScanner,
+  type ScanStatus,
+} from "@/components/dashboard/barcode-scanner";
 import {
   EmptyState,
   ErrorNote,
@@ -21,6 +25,7 @@ import {
 type Product = {
   id: string;
   sku: string;
+  barcode: string | null;
   name: string;
   category: string | null;
   unit: string | null;
@@ -31,6 +36,7 @@ type Product = {
 
 const emptyForm = {
   sku: "",
+  barcode: "",
   name: "",
   category: "",
   unit: "",
@@ -49,6 +55,19 @@ export default function InventoryPage() {
   const [form, setForm] = useState(emptyForm);
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Barcode scan-to-fill state (product form)
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanStatus, setScanStatus] = useState<ScanStatus>(null);
+
+  // Scanner fills the barcode field of the product form directly.
+  const handleScan = useCallback((code: string) => {
+    setForm((f) => ({ ...f, barcode: code }));
+    setScanStatus({
+      ok: true,
+      text: `Barcode "${code}" terisi. Klik Simpan untuk menerapkan.`,
+    });
+  }, []);
 
   const load = useCallback(async (q: string) => {
     try {
@@ -79,6 +98,7 @@ export default function InventoryPage() {
     setEditing(p);
     setForm({
       sku: p.sku,
+      barcode: p.barcode ?? "",
       name: p.name,
       category: p.category ?? "",
       unit: p.unit ?? "",
@@ -94,6 +114,7 @@ export default function InventoryPage() {
     try {
       const body = {
         sku: form.sku,
+        barcode: form.barcode || null,
         name: form.name,
         category: form.category || null,
         unit: form.unit || null,
@@ -167,7 +188,7 @@ export default function InventoryPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari nama atau SKU..."
+          placeholder="Cari nama, SKU, atau barcode..."
           aria-label="Cari produk"
           className={`${inputCls} pl-9`}
         />
@@ -204,6 +225,11 @@ export default function InventoryPage() {
                         {p.sku}
                         {p.unit ? ` · ${p.unit}` : ""}
                       </p>
+                      {p.barcode ? (
+                        <p className="font-mono text-[11px] text-foreground/40">
+                          {p.barcode}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-foreground/70">
                       {p.category ?? "—"}
@@ -284,6 +310,33 @@ export default function InventoryPage() {
               />
             </label>
           </div>
+          <label className="flex flex-col gap-1.5">
+            <span className={labelCls}>Barcode / QR</span>
+            <div className="flex items-center gap-2">
+              <input
+                value={form.barcode}
+                onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                className={`${inputCls} flex-1 font-mono`}
+                placeholder="8998866200011"
+                inputMode="numeric"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setScanStatus(null);
+                  setScanOpen(true);
+                }}
+                aria-label="Scan barcode produk"
+                title="Scan barcode produk"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors hover:bg-primary/20"
+              >
+                <ScanLine className="h-4 w-4" />
+              </button>
+            </div>
+            <span className="text-[11px] text-foreground/40">
+              Kode di kemasan produk (EAN/UPC/QR) — dipakai saat scan di Penjualan &amp; Pembelian.
+            </span>
+          </label>
           <label className="flex flex-col gap-1.5">
             <span className={labelCls}>Nama Produk *</span>
             <input
@@ -376,6 +429,16 @@ export default function InventoryPage() {
       >
         <span />
       </FormDialog>
+
+      {/* Barcode / QR scanner: fills the product form's barcode field */}
+      <BarcodeScanner
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onDetected={handleScan}
+        title="Scan Barcode Produk"
+        hint="Arahkan barcode/QR di kemasan produk — kode terisi otomatis ke field Barcode, lalu klik Simpan."
+        status={scanStatus}
+      />
     </div>
   );
 }

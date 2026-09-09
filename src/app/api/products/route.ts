@@ -1,4 +1,4 @@
-// GET  /api/products  — list products for the current business (?search=)
+// GET  /api/products  — list products for the current business (?search= | ?barcode=)
 // POST /api/products  — create a product
 
 import { NextResponse } from "next/server";
@@ -15,6 +15,22 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const search = url.searchParams.get("search") ?? "";
+  const barcode = url.searchParams.get("barcode")?.trim() ?? "";
+
+  // Exact barcode lookup (used by the scanner in Sales/Purchasing).
+  if (barcode) {
+    const matches = await db.product.findMany({
+      where: { businessId, barcode },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      include: {
+        inventory: {
+          select: { warehouseId: true, quantity: true },
+        },
+      },
+    });
+    return NextResponse.json({ products: matches });
+  }
 
   const where = {
     businessId,
@@ -23,6 +39,7 @@ export async function GET(req: Request) {
           OR: [
             { name: { contains: search } },
             { sku: { contains: search } },
+            { barcode: { contains: search } },
           ],
         }
       : {}),
@@ -66,6 +83,7 @@ export async function POST(req: Request) {
         businessId,
         name,
         sku,
+        barcode: body.barcode ? String(body.barcode).trim() : null,
         category: body.category ? String(body.category) : null,
         brand: body.brand ? String(body.brand) : null,
         unit: body.unit ? String(body.unit) : null,

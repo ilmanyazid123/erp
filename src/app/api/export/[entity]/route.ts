@@ -126,6 +126,7 @@ async function buildRows(entity: string, businessId: string | null): Promise<Row
       });
       return rows.map((p) => ({
         SKU: p.sku ?? "",
+        Barcode: p.barcode ?? "",
         Nama: p.name,
         Kategori: p.category ?? "",
         Merek: p.brand ?? "",
