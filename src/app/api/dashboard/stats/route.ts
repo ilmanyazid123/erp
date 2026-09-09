@@ -153,7 +153,7 @@ async function memberStats(businessId: string) {
       {
         label: "Menunggu aksi",
         value: `${draftSO + openPO} pesanan`,
-        delta: "perlu diproses",
+        delta: draftSO + openPO > 0 ? "perlu diproses" : "tidak ada antrean",
         up: draftSO + openPO === 0,
         tone: "coral",
         icon: "clock",
