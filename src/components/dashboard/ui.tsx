@@ -170,6 +170,14 @@ export function FormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn("max-h-[90vh] overflow-y-auto", wide ? "sm:max-w-2xl" : "sm:max-w-md")}
+        // The camera scanner renders in its own body-level portal (so it can
+        // escape Radix's inert background). Without this guard Radix treats
+        // every tap inside the scanner as "interact outside" and closes the
+        // hosting form dialog behind the user's back.
+        onInteractOutside={(e) => {
+          const t = e.target as HTMLElement | null;
+          if (t?.closest?.("[data-scanner-overlay]")) e.preventDefault();
+        }}
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

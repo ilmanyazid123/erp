@@ -15,6 +15,7 @@
 // fallback, retry, camera switching (front/back) and torch support.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   CameraOff,
   Lightbulb,
@@ -121,14 +122,17 @@ export function BarcodeScanner({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const stopRef = useRef<StopFn | null>(null);
   const runIdRef = useRef(0);
-  // Presence-aware dedupe: a code must LEAVE the camera view for GONE_MS
-  // before it can be accepted again — otherwise a barcode resting in front
-  // of the camera would keep incrementing the quantity forever.
+  // Presence-aware dedupe: a code is only re-accepted after it has NOT been
+  // seen for GONE_MS — otherwise a barcode resting in front of the camera
+  // would keep incrementing the quantity forever.
   const seenRef = useRef<{ code: string; ts: number }>({ code: "", ts: 0 });
   const onDetectedRef = useRef(onDetected);
 
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [manual, setManual] = useState("");
+  // Last code the engines actually read — shown as a chip AND poured into
+  // the manual input so the user always sees the scanned digits on screen.
+  const [lastCode, setLastCode] = useState("");
   const [starting, setStarting] = useState(false);
   const [facing, setFacing] = useState<"environment" | "user">("environment");
   const [hasMultiCam, setHasMultiCam] = useState(false);
@@ -165,13 +169,17 @@ export function BarcodeScanner({
   const handleDetected = useCallback(
     (code: string) => {
       const now = Date.now();
-      // Same code still (or just) in view → part of the same scan event.
-      if (code === seenRef.current.code && now - seenRef.current.ts < 1000) {
+      // Same code still in front of the camera (re-read < GONE_MS ago) →
+      // part of the SAME scan event: refresh its timestamp, do NOT fire.
+      if (code === seenRef.current.code && now - seenRef.current.ts < 800) {
         seenRef.current.ts = now;
         return;
       }
-      // New code, or the previous one left the view — accept it.
+      // New code, or the previous one has been away from the lens long
+      // enough — treat it as a fresh scan.
       seenRef.current = { code, ts: now };
+      setLastCode(code);
+      setManual(code); // auto-fill the visible input with the scanned digits
       beep();
       onDetectedRef.current(code);
     },
@@ -366,6 +374,8 @@ export function BarcodeScanner({
   useEffect(() => {
     if (!open) return;
     seenRef.current = { code: "", ts: 0 };
+    setLastCode("");
+    setManual("");
     void startCamera();
     return () => stopCamera();
   }, [open, startCamera, stopCamera]);
@@ -411,14 +421,27 @@ export function BarcodeScanner({
     onDetected(code);
   };
 
+  // A Radix Dialog of its own: as the TOPMOST modal layer it gets its own
+  // focus scope — the hosting form dialog (Sales/Purchasing/Inventory form)
+  // no longer steals focus from the manual input, and every tap here lands
+  // (body is no longer inert for this layer). This fixes the reported
+  // "camera works but nothing can be filled in / close button dead" bug.
   return (
-    <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
     >
-      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-card shadow-2xl">
+      <DialogContent
+        showCloseButton={false}
+        className="z-[90] max-w-md gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-md"
+        aria-label={title}
+        // Host form dialogs must not treat taps in here as "interact
+        // outside" (see FormDialog onInteractOutside in dashboard/ui.tsx).
+        data-scanner-overlay=""
+      >
+        <DialogTitle className="sr-only">{title}</DialogTitle>
         <div className="flex items-center justify-between border-b border-foreground/10 px-4 py-3">
           <div className="flex items-center gap-2">
             <ScanLine className="h-4.5 w-4.5 text-primary" />
@@ -476,6 +499,19 @@ export function BarcodeScanner({
         <div className="flex flex-col gap-3 p-4">
           <p className="text-xs text-foreground/50">{hint}</p>
 
+          {lastCode ? (
+            <div
+              className="flex items-center gap-2 rounded-lg border border-[color:var(--teal)]/30 bg-[color:var(--teal)]/5 px-3 py-2"
+              aria-label="Kode hasil scan"
+            >
+              <ScanLine className="h-3.5 w-3.5 shrink-0 text-[color:var(--teal)]" />
+              <span className="shrink-0 text-xs text-foreground/60">Terbaca:</span>
+              <span className="truncate font-mono text-sm font-semibold tracking-wide text-foreground">
+                {lastCode}
+              </span>
+            </div>
+          ) : null}
+
           {status ? (
             <p
               role="status"
@@ -525,7 +561,8 @@ export function BarcodeScanner({
               className={`${inputCls} flex-1`}
               placeholder={manualPlaceholder}
               aria-label="Input barcode manual"
-              inputMode="numeric"
+              inputMode="text"
+              autoComplete="off"
             />
             <button type="submit" className={primaryBtnCls}>
               Cari
@@ -536,7 +573,7 @@ export function BarcodeScanner({
             Selesai
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
